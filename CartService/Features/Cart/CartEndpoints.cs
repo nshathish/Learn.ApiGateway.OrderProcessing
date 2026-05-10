@@ -23,14 +23,10 @@ public static class CartEndpoints
                 int userId,
                 AddItemRequest request,
                 CartDbContext db,
-                IHttpClientFactory http,
-                IConfiguration config) =>
+                IHttpClientFactory http) =>
             {
-                var productServiceUrl = config["ServiceUrls:ProductService"] ?? "https://localhost:5001";
-
-                var productClient = http.CreateClient();
-                var productResponse =
-                    await productClient.GetAsync($"{productServiceUrl}/api/products/{request.ProductId}");
+                using var productClient = http.CreateClient("ProductService");
+                var productResponse = await productClient.GetAsync($"/api/products/{request.ProductId}");
 
                 if (!productResponse.IsSuccessStatusCode)
                 {

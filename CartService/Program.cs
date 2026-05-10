@@ -10,7 +10,8 @@ builder.Services.AddOpenApi();
 builder.Services.AddDbContext<CartDbContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-builder.Services.AddHttpClient();
+var productServiceUrl = builder.Configuration["ServiceUrls:ProductService"] ?? "https://localhost:5001";
+builder.Services.AddHttpClient("ProductService", client => client.BaseAddress = new Uri(productServiceUrl));
 
 var app = builder.Build();
 

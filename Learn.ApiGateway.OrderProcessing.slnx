@@ -1,5 +1,8 @@
 <Solution>
   <Folder Name="/azure/" />
+  <Folder Name="/docs/">
+    <File Path="docs/infra-planning.md" />
+  </Folder>
   <Folder Name="/scripts/">
     <File Path="run-all.ps1" />
   </Folder>
@@ -13,4 +16,7 @@
     <Project Path="UserService/UserService.csproj" />
   </Folder>
   <Folder Name="/src/Shared/" />
+  <Project Path="docker-compose.dcproj">
+    <Build />
+  </Project>
 </Solution>

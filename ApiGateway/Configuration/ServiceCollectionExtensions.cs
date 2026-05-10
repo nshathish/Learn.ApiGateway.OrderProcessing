@@ -8,8 +8,17 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddGatewayServices(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddOpenApi();
-        services.AddHttpClient();
         services.Configure<ServiceUrlsOptions>(configuration.GetSection("ServiceUrls"));
+
+        var productServiceUrl = configuration["ServiceUrls:ProductService"] ?? "https://localhost:5001";
+        var cartServiceUrl = configuration["ServiceUrls:CartService"] ?? "https://localhost:5002";
+        var userServiceUrl = configuration["ServiceUrls:UserService"] ?? "https://localhost:5003";
+        var paymentServiceUrl = configuration["ServiceUrls:PaymentService"] ?? "https://localhost:5004";
+
+        services.AddHttpClient("ProductService", client => client.BaseAddress = new Uri(productServiceUrl));
+        services.AddHttpClient("CartService", client => client.BaseAddress = new Uri(cartServiceUrl));
+        services.AddHttpClient("UserService", client => client.BaseAddress = new Uri(userServiceUrl));
+        services.AddHttpClient("PaymentService", client => client.BaseAddress = new Uri(paymentServiceUrl));
 
         services.AddReverseProxy()
             .LoadFromConfig(configuration.GetSection("ReverseProxy"));

@@ -1,3 +1,4 @@
+using Microsoft.Data.Sqlite;
 using PaymentService.Features.Payments.Entities;
 
 namespace PaymentService.Infrastructure;
@@ -8,6 +9,16 @@ public static class DbInitializer
     {
         var db = serviceProvider.GetRequiredService<PaymentDbContext>();
         db.Database.EnsureCreated();
+
+        try
+        {
+            _ = db.PaymentMethods.Any();
+        }
+        catch (SqliteException ex) when (ex.SqliteErrorCode == 1 && ex.Message.Contains("no such table", StringComparison.OrdinalIgnoreCase))
+        {
+            db.Database.EnsureDeleted();
+            db.Database.EnsureCreated();
+        }
 
         if (!db.PaymentMethods.Any())
         {

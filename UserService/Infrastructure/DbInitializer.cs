@@ -1,3 +1,4 @@
+using Microsoft.Data.Sqlite;
 using UserService.Features.Users.Entities;
 
 namespace UserService.Infrastructure;
@@ -8,6 +9,16 @@ public static class DbInitializer
     {
         var db = serviceProvider.GetRequiredService<UserDbContext>();
         db.Database.EnsureCreated();
+
+        try
+        {
+            _ = db.Users.Any();
+        }
+        catch (SqliteException ex) when (ex.SqliteErrorCode == 1 && ex.Message.Contains("no such table", StringComparison.OrdinalIgnoreCase))
+        {
+            db.Database.EnsureDeleted();
+            db.Database.EnsureCreated();
+        }
 
         if (!db.Users.Any())
         {
