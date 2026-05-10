@@ -1,0 +1,16 @@
+<Solution>
+  <Folder Name="/azure/" />
+  <Folder Name="/scripts/">
+    <File Path="run-all.ps1" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="ApiGateway/ApiGateway.csproj" />
+  </Folder>
+  <Folder Name="/src/Services/">
+    <Project Path="CartService/CartService.csproj" />
+    <Project Path="PaymentService/PaymentService.csproj" />
+    <Project Path="ProductService/ProductService.csproj" />
+    <Project Path="UserService/UserService.csproj" />
+  </Folder>
+  <Folder Name="/src/Shared/" />
+</Solution>

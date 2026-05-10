@@ -1,0 +1,56 @@
+# ===== .NET =====
+[Bb]in/
+[Oo]bj/
+*.nupkg
+*.snupkg
+.nuget/
+packages/
+
+# Test results
+TestResults/
+[Tt]est[Rr]esult*/
+*.trx
+*.coverage
+*.coveragexml
+
+# Publish output
+**/publish/
+
+# ===== Visual Studio =====
+.vs/
+*.user
+*.DotSettings.user
+*.slnLaunch.user
+*.suo
+*.sdf
+*.opensdf
+
+# ===== App configuration (environment-specific, may contain secrets) =====
+appsettings.Development.json
+appsettings.Staging.json
+appsettings.Production.json
+
+# ===== SQLite databases (local dev) =====
+*.db
+*.db-shm
+*.db-wal
+
+# ===== Angular / Node (OrderProcessingUI has its own .gitignore) =====
+node_modules/
+dist/
+.angular/cache/
+
+# ===== IDE - JetBrains Rider =====
+.idea/
+
+# ===== IDE - VS Code =====
+.vscode/
+
+# ===== Claude Code =====
+.claude/settings.local.json
+
+# ===== OS =====
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
