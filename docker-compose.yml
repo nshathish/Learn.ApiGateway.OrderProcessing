@@ -4,6 +4,11 @@ services:
     build:
       context: .
       dockerfile: ApiGateway/Dockerfile
+    depends_on:
+      - ${DOCKER_REGISTRY-}cartservice
+      - ${DOCKER_REGISTRY-}paymentservice
+      - ${DOCKER_REGISTRY-}productservice
+      - ${DOCKER_REGISTRY-}userservice
 
   cartservice:
     image: ${DOCKER_REGISTRY-}cartservice

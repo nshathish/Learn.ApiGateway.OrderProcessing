@@ -6,6 +6,12 @@
     <ProjectGuid>81dded9d-158b-e303-5f62-77a2896d2a5a</ProjectGuid>
   </PropertyGroup>
   <ItemGroup>
+    <None Include="azure\orderprocessing-infra-terraform\.gitignore" />
+    <None Include="azure\orderprocessing-infra-terraform\main.tf" />
+    <None Include="azure\orderprocessing-infra-terraform\outputs.tf" />
+    <None Include="azure\orderprocessing-infra-terraform\providers.tf" />
+    <None Include="azure\orderprocessing-infra-terraform\README.md" />
+    <None Include="azure\orderprocessing-infra-terraform\variables.tf" />
     <None Include="docker-compose.override.yml">
       <DependentUpon>docker-compose.yml</DependentUpon>
     </None>
