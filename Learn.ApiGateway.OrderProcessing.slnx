@@ -3,9 +3,6 @@
   <Folder Name="/docs/">
     <File Path="docs/infra-planning.md" />
   </Folder>
-  <Folder Name="/scripts/">
-    <File Path="run-all.ps1" />
-  </Folder>
   <Folder Name="/src/">
     <Project Path="ApiGateway/ApiGateway.csproj" />
   </Folder>

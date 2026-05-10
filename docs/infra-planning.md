@@ -1,5 +1,40 @@
 # Azure Deployment Guide — Learn.ApiGateway.OrderProcessing
 
+## Local Container Runtime (Already Implemented)
+
+Dockerfiles and Docker Compose files are now part of the repo and can run all backend services locally in containers.
+
+### Current local container topology
+
+- ApiGateway: `http://localhost:8080`
+- CartService: `http://localhost:8082`
+- PaymentService: `http://localhost:8083`
+- ProductService: `http://localhost:8084`
+- UserService: `http://localhost:8085`
+
+### Run locally with Docker Compose
+
+```powershell
+docker compose up -d --build
+```
+
+### Verify key endpoints
+
+```powershell
+Invoke-WebRequest -Uri "http://localhost:8080/health" -UseBasicParsing
+Invoke-WebRequest -Uri "http://localhost:8080/api/products" -UseBasicParsing
+Invoke-WebRequest -Uri "http://localhost:8080/api/checkout-page/1" -UseBasicParsing
+```
+
+### Check logs / restart one service
+
+```powershell
+docker compose logs --tail 200 apigateway productservice cartservice userservice paymentservice
+docker compose up -d --build apigateway
+```
+
+---
+
 ## Recommended Architecture: Azure Container Apps + Azure Static Web Apps
 
 ### Why Azure Container Apps (not App Service)
@@ -196,6 +231,8 @@ Files in `public/` are copied to the build output as-is by the Angular Vite buil
 
 ### `.dockerignore` (solution root)
 
+> Already created in this repository. Keep it updated when adding new build artifacts.
+
 ```
 **/bin/
 **/obj/
@@ -207,6 +244,8 @@ OrderProcessingUI/.angular/
 ```
 
 ### Dockerfile pattern (one per service)
+
+> Dockerfiles are already created for all backend services (`ApiGateway`, `ProductService`, `CartService`, `UserService`, `PaymentService`). The pattern below is retained as reference.
 
 All 5 Dockerfiles follow this multi-stage pattern. Place each at the root of its service folder. **Build context is always the solution root** (one level up) so the `.csproj` restore can be cached independently from the source copy.
 
@@ -272,7 +311,7 @@ az extension add --name containerapp --upgrade
 az group create --name rg-orderprocessing-dev --location eastus2
 
 # 2. Log Analytics
-az monitor log-analytics workspace create \
+az monitor.log-analytics.workspace create \
   --resource-group rg-orderprocessing-dev \
   --workspace-name law-orderprocessing-dev
 
