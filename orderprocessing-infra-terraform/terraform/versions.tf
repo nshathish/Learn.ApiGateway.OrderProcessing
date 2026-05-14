@@ -15,7 +15,7 @@ terraform {
   backend "azurerm" {
     resource_group_name  = "learn-labs"
     storage_account_name = "softinovgenericstorage"
-    container_name       = "tfstatestorage"
+    container_name       = "tfstatestoragev2"
     key                  = "terraform.tfstate"
   }
 }
