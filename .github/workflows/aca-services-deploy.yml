@@ -92,15 +92,17 @@ jobs:
                   docker build -f PaymentService/Dockerfile -t "$ACR_LOGIN_SERVER/paymentservice:$IMAGE_TAG" .
                   docker push "$ACR_LOGIN_SERVER/paymentservice:$IMAGE_TAG"
 
-            - name: Ensure ACA managed identity has AcrPull
+            - name: Ensure ACA identity and ACR access
               shell: bash
               run: |
                   set -euo pipefail
+                  az config set core.only_show_errors=true 1>/dev/null
 
                   ACR_ID=$(az acr show -n "$ACR_NAME" -g "$RESOURCE_GROUP_NAME" --query id -o tsv)
 
                   for app in cart product user payment; do
                     APP_NAME="${PROJECT_NAME}-${app}"
+                    echo "Configuring identity/ACR access for $APP_NAME"
 
                     az containerapp identity assign \
                       --name "$APP_NAME" \
@@ -113,19 +115,19 @@ jobs:
                       --query identity.principalId \
                       -o tsv)
 
-                    EXISTS=$(az role assignment list \
+                    ASSIGNMENT_OUTPUT=$(az role assignment create \
                       --assignee-object-id "$PRINCIPAL_ID" \
-                      --scope "$ACR_ID" \
+                      --assignee-principal-type ServicePrincipal \
                       --role AcrPull \
-                      --query "length([])" \
-                      -o tsv)
+                      --scope "$ACR_ID" \
+                      --output none 2>&1) || true
 
-                    if [ "$EXISTS" = "0" ]; then
-                      az role assignment create \
-                        --assignee-object-id "$PRINCIPAL_ID" \
-                        --assignee-principal-type ServicePrincipal \
-                        --role AcrPull \
-                        --scope "$ACR_ID" 1>/dev/null
+                    if echo "$ASSIGNMENT_OUTPUT" | grep -qi "RoleAssignmentExists"; then
+                      echo "AcrPull already assigned for $APP_NAME"
+                    elif [ -n "$ASSIGNMENT_OUTPUT" ]; then
+                      echo "$ASSIGNMENT_OUTPUT"
+                    else
+                      echo "AcrPull assigned for $APP_NAME"
                     fi
                   done
 
