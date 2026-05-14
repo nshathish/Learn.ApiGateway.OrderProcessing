@@ -9,8 +9,7 @@ resource "azurerm_container_app" "this" {
   }
 
   registry {
-    server   = var.acr_login_server
-    identity = azurerm_container_app.this.identity[0].principal_id
+    server = var.acr_login_server
   }
 
   template {
