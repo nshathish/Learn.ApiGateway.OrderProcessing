@@ -62,6 +62,6 @@ variable "tags" {
   default = {
     Environment = "Development"
     ManagedBy   = "Terraform"
-    Project     = "Azure.Infrastructure"
+    Project     = "Learn.ApiGateway.OrderProcessing"
   }
 }
