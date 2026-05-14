@@ -48,6 +48,12 @@ module "cart_app" {
   acr_login_server = module.acr.login_server
 }
 
+resource "azurerm_role_assignment" "cart_acr_pull" {
+  scope              = module.acr.id
+  role_definition_name = "AcrPull"
+  principal_id       = module.cart_app.system_assigned_identity_principal_id
+}
+
 # PaymentService
 module "payment_app" {
   source = "./modules/container_app"
@@ -64,6 +70,12 @@ module "payment_app" {
 
   acr_id           = module.acr.id
   acr_login_server = module.acr.login_server
+}
+
+resource "azurerm_role_assignment" "payment_acr_pull" {
+  scope              = module.acr.id
+  role_definition_name = "AcrPull"
+  principal_id       = module.payment_app.system_assigned_identity_principal_id
 }
 
 # ProductService
@@ -84,6 +96,12 @@ module "product_app" {
   acr_login_server = module.acr.login_server
 }
 
+resource "azurerm_role_assignment" "product_acr_pull" {
+  scope              = module.acr.id
+  role_definition_name = "AcrPull"
+  principal_id       = module.product_app.system_assigned_identity_principal_id
+}
+
 # UserService
 module "user_app" {
   source = "./modules/container_app"
@@ -100,4 +118,10 @@ module "user_app" {
 
   acr_id           = module.acr.id
   acr_login_server = module.acr.login_server
+}
+
+resource "azurerm_role_assignment" "user_acr_pull" {
+  scope              = module.acr.id
+  role_definition_name = "AcrPull"
+  principal_id       = module.user_app.system_assigned_identity_principal_id
 }

@@ -10,7 +10,7 @@ resource "azurerm_container_app" "this" {
 
   registry {
     server   = var.acr_login_server
-    identity = "system"
+    identity = azurerm_container_app.this.identity[0].principal_id
   }
 
   template {
@@ -39,13 +39,6 @@ resource "azurerm_container_app" "this" {
       latest_revision = true
     }
   }
-}
-
-# Grant the system-assigned identity AcrPull on the ACR
-resource "azurerm_role_assignment" "acr_pull" {
-  scope                = var.acr_id
-  role_definition_name = "AcrPull"
-  principal_id         = azurerm_container_app.this.identity[0].principal_id
 }
 
 
