@@ -30,98 +30,48 @@ module "container_app_env" {
   log_analytics_id    = module.log_analytics.workspace_id
 }
 
-# CartService
-module "cart_app" {
-  source = "./modules/container_app"
-
+# Reference existing Container Apps using data sources
+data "azurerm_container_app" "cart" {
   name                = "${var.project_name}-cart"
-  resource_group_name = azurerm_resource_group.rg.name
-  location            = azurerm_resource_group.rg.location
-
-  environment_id = module.container_app_env.environment_id
-  image          = var.cart_image
-  container_port = var.container_port
-  cpu            = var.container_cpu
-  memory         = var.container_memory
-
-  acr_id           = module.acr.id
-  acr_login_server = module.acr.login_server
+  resource_group_name = var.resource_group_name
 }
 
-resource "azurerm_role_assignment" "cart_acr_pull" {
-  scope              = module.acr.id
-  role_definition_name = "AcrPull"
-  principal_id       = module.cart_app.system_assigned_identity_principal_id
-}
-
-# PaymentService
-module "payment_app" {
-  source = "./modules/container_app"
-
+data "azurerm_container_app" "payment" {
   name                = "${var.project_name}-payment"
-  resource_group_name = azurerm_resource_group.rg.name
-  location            = azurerm_resource_group.rg.location
+  resource_group_name = var.resource_group_name
+}
 
-  environment_id = module.container_app_env.environment_id
-  image          = var.payment_image
-  container_port = var.container_port
-  cpu            = var.container_cpu
-  memory         = var.container_memory
+data "azurerm_container_app" "product" {
+  name                = "${var.project_name}-product"
+  resource_group_name = var.resource_group_name
+}
 
-  acr_id           = module.acr.id
-  acr_login_server = module.acr.login_server
+data "azurerm_container_app" "user" {
+  name                = "${var.project_name}-user"
+  resource_group_name = var.resource_group_name
+}
+
+# Grant AcrPull role to each Container App's managed identity
+resource "azurerm_role_assignment" "cart_acr_pull" {
+  scope                = module.acr.id
+  role_definition_name = "AcrPull"
+  principal_id         = data.azurerm_container_app.cart.identity[0].principal_id
 }
 
 resource "azurerm_role_assignment" "payment_acr_pull" {
-  scope              = module.acr.id
+  scope                = module.acr.id
   role_definition_name = "AcrPull"
-  principal_id       = module.payment_app.system_assigned_identity_principal_id
-}
-
-# ProductService
-module "product_app" {
-  source = "./modules/container_app"
-
-  name                = "${var.project_name}-product"
-  resource_group_name = azurerm_resource_group.rg.name
-  location            = azurerm_resource_group.rg.location
-
-  environment_id = module.container_app_env.environment_id
-  image          = var.product_image
-  container_port = var.container_port
-  cpu            = var.container_cpu
-  memory         = var.container_memory
-
-  acr_id           = module.acr.id
-  acr_login_server = module.acr.login_server
+  principal_id         = data.azurerm_container_app.payment.identity[0].principal_id
 }
 
 resource "azurerm_role_assignment" "product_acr_pull" {
-  scope              = module.acr.id
+  scope                = module.acr.id
   role_definition_name = "AcrPull"
-  principal_id       = module.product_app.system_assigned_identity_principal_id
-}
-
-# UserService
-module "user_app" {
-  source = "./modules/container_app"
-
-  name                = "${var.project_name}-user"
-  resource_group_name = azurerm_resource_group.rg.name
-  location            = azurerm_resource_group.rg.location
-
-  environment_id = module.container_app_env.environment_id
-  image          = var.user_image
-  container_port = var.container_port
-  cpu            = var.container_cpu
-  memory         = var.container_memory
-
-  acr_id           = module.acr.id
-  acr_login_server = module.acr.login_server
+  principal_id         = data.azurerm_container_app.product.identity[0].principal_id
 }
 
 resource "azurerm_role_assignment" "user_acr_pull" {
-  scope              = module.acr.id
+  scope                = module.acr.id
   role_definition_name = "AcrPull"
-  principal_id       = module.user_app.system_assigned_identity_principal_id
+  principal_id         = data.azurerm_container_app.user.identity[0].principal_id
 }
