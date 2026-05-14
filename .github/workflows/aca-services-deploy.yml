@@ -92,6 +92,43 @@ jobs:
                   docker build -f PaymentService/Dockerfile -t "$ACR_LOGIN_SERVER/paymentservice:$IMAGE_TAG" .
                   docker push "$ACR_LOGIN_SERVER/paymentservice:$IMAGE_TAG"
 
+            - name: Ensure ACA managed identity has AcrPull
+              shell: bash
+              run: |
+                  set -euo pipefail
+
+                  ACR_ID=$(az acr show -n "$ACR_NAME" -g "$RESOURCE_GROUP_NAME" --query id -o tsv)
+
+                  for app in cart product user payment; do
+                    APP_NAME="${PROJECT_NAME}-${app}"
+
+                    az containerapp identity assign \
+                      --name "$APP_NAME" \
+                      --resource-group "$RESOURCE_GROUP_NAME" \
+                      --system-assigned 1>/dev/null
+
+                    PRINCIPAL_ID=$(az containerapp show \
+                      --name "$APP_NAME" \
+                      --resource-group "$RESOURCE_GROUP_NAME" \
+                      --query identity.principalId \
+                      -o tsv)
+
+                    EXISTS=$(az role assignment list \
+                      --assignee-object-id "$PRINCIPAL_ID" \
+                      --scope "$ACR_ID" \
+                      --role AcrPull \
+                      --query "length([])" \
+                      -o tsv)
+
+                    if [ "$EXISTS" = "0" ]; then
+                      az role assignment create \
+                        --assignee-object-id "$PRINCIPAL_ID" \
+                        --assignee-principal-type ServicePrincipal \
+                        --role AcrPull \
+                        --scope "$ACR_ID" 1>/dev/null
+                    fi
+                  done
+
             - name: Update Container Apps
               shell: bash
               run: |
@@ -100,22 +137,30 @@ jobs:
                   az containerapp update \
                     --name "${PROJECT_NAME}-cart" \
                     --resource-group "$RESOURCE_GROUP_NAME" \
-                    --image "$ACR_LOGIN_SERVER/cartservice:$IMAGE_TAG"
+                    --image "$ACR_LOGIN_SERVER/cartservice:$IMAGE_TAG" \
+                    --registry-server "$ACR_LOGIN_SERVER" \
+                    --registry-identity system
 
                   az containerapp update \
                     --name "${PROJECT_NAME}-product" \
                     --resource-group "$RESOURCE_GROUP_NAME" \
-                    --image "$ACR_LOGIN_SERVER/productservice:$IMAGE_TAG"
+                    --image "$ACR_LOGIN_SERVER/productservice:$IMAGE_TAG" \
+                    --registry-server "$ACR_LOGIN_SERVER" \
+                    --registry-identity system
 
                   az containerapp update \
                     --name "${PROJECT_NAME}-user" \
                     --resource-group "$RESOURCE_GROUP_NAME" \
-                    --image "$ACR_LOGIN_SERVER/userservice:$IMAGE_TAG"
+                    --image "$ACR_LOGIN_SERVER/userservice:$IMAGE_TAG" \
+                    --registry-server "$ACR_LOGIN_SERVER" \
+                    --registry-identity system
 
                   az containerapp update \
                     --name "${PROJECT_NAME}-payment" \
                     --resource-group "$RESOURCE_GROUP_NAME" \
-                    --image "$ACR_LOGIN_SERVER/paymentservice:$IMAGE_TAG"
+                    --image "$ACR_LOGIN_SERVER/paymentservice:$IMAGE_TAG" \
+                    --registry-server "$ACR_LOGIN_SERVER" \
+                    --registry-identity system
 
             - name: Deployment summary
               shell: bash
