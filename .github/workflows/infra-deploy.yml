@@ -11,6 +11,12 @@ on:
       - main
     paths:
       - "orderprocessing-infra-terraform/**"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment to deploy"
+        required: true
+        default: "development"
 
 permissions:
   id-token: write
@@ -26,7 +32,8 @@ jobs:
     name: Terraform Apply
     runs-on: ubuntu-latest
 
-    environment: development
+    environment:
+      name: ${{ github.event.inputs.environment }}
 
     defaults:
       run:
