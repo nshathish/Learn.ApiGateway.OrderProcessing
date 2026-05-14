@@ -96,7 +96,34 @@ jobs:
               shell: bash
               run: |
                   set -euo pipefail
-                  az config set core.only_show_errors=true 1>/dev/null
+
+                  retry_containerapp_command() {
+                    local description="$1"
+                    shift
+
+                    local attempt=1
+                    local max_attempts=20
+                    local wait_seconds=15
+                    local output=""
+
+                    while [ "$attempt" -le "$max_attempts" ]; do
+                      output=$("$@" 2>&1) && return 0
+
+                      if echo "$output" | grep -qi "ContainerAppOperationInProgress"; then
+                        echo "$description is waiting for an active ACA operation to finish (attempt $attempt/$max_attempts)..."
+                        sleep "$wait_seconds"
+                        attempt=$((attempt + 1))
+                        continue
+                      fi
+
+                      echo "$output"
+                      return 1
+                    done
+
+                    echo "$description failed after $max_attempts attempts due to repeated active ACA operations."
+                    echo "$output"
+                    return 1
+                  }
 
                   ACR_ID=$(az acr show -n "$ACR_NAME" -g "$RESOURCE_GROUP_NAME" --query id -o tsv)
 
@@ -104,7 +131,8 @@ jobs:
                     APP_NAME="${PROJECT_NAME}-${app}"
                     echo "Configuring identity/ACR access for $APP_NAME"
 
-                    az containerapp identity assign \
+                    retry_containerapp_command "Identity assignment for $APP_NAME" \
+                      az containerapp identity assign \
                       --name "$APP_NAME" \
                       --resource-group "$RESOURCE_GROUP_NAME" \
                       --system-assigned 1>/dev/null
@@ -136,28 +164,60 @@ jobs:
               run: |
                   set -euo pipefail
 
-                  az containerapp update \
+                  retry_containerapp_command() {
+                    local description="$1"
+                    shift
+
+                    local attempt=1
+                    local max_attempts=20
+                    local wait_seconds=15
+                    local output=""
+
+                    while [ "$attempt" -le "$max_attempts" ]; do
+                      output=$("$@" 2>&1) && return 0
+
+                      if echo "$output" | grep -qi "ContainerAppOperationInProgress"; then
+                        echo "$description is waiting for an active ACA operation to finish (attempt $attempt/$max_attempts)..."
+                        sleep "$wait_seconds"
+                        attempt=$((attempt + 1))
+                        continue
+                      fi
+
+                      echo "$output"
+                      return 1
+                    done
+
+                    echo "$description failed after $max_attempts attempts due to repeated active ACA operations."
+                    echo "$output"
+                    return 1
+                  }
+
+                  retry_containerapp_command "Update for ${PROJECT_NAME}-cart" \
+                    az containerapp update \
                     --name "${PROJECT_NAME}-cart" \
                     --resource-group "$RESOURCE_GROUP_NAME" \
                     --image "$ACR_LOGIN_SERVER/cartservice:$IMAGE_TAG" \
                     --registry-server "$ACR_LOGIN_SERVER" \
                     --registry-identity system
 
-                  az containerapp update \
+                  retry_containerapp_command "Update for ${PROJECT_NAME}-product" \
+                    az containerapp update \
                     --name "${PROJECT_NAME}-product" \
                     --resource-group "$RESOURCE_GROUP_NAME" \
                     --image "$ACR_LOGIN_SERVER/productservice:$IMAGE_TAG" \
                     --registry-server "$ACR_LOGIN_SERVER" \
                     --registry-identity system
 
-                  az containerapp update \
+                  retry_containerapp_command "Update for ${PROJECT_NAME}-user" \
+                    az containerapp update \
                     --name "${PROJECT_NAME}-user" \
                     --resource-group "$RESOURCE_GROUP_NAME" \
                     --image "$ACR_LOGIN_SERVER/userservice:$IMAGE_TAG" \
                     --registry-server "$ACR_LOGIN_SERVER" \
                     --registry-identity system
 
-                  az containerapp update \
+                  retry_containerapp_command "Update for ${PROJECT_NAME}-payment" \
+                    az containerapp update \
                     --name "${PROJECT_NAME}-payment" \
                     --resource-group "$RESOURCE_GROUP_NAME" \
                     --image "$ACR_LOGIN_SERVER/paymentservice:$IMAGE_TAG" \
