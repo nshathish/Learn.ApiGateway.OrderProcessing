@@ -11,8 +11,11 @@ terraform {
       version = "~> 3.6"
     }
   }
-}
 
-provider "azurerm" {
-  features {}
+  backend "azurerm" {
+    resource_group_name  = "learn-labs"
+    storage_account_name = "softinovgenericstorage"
+    container_name       = "tfstatestorage"
+    key                  = "terraform.tfstate"
+  }
 }
