@@ -7,17 +7,17 @@ output "container_app_env_id" {
 }
 
 output "cart_app_fqdn" {
-  value = module.cart_app.fqdn
+  value = data.azurerm_container_app.cart.ingress[0].fqdn
 }
 
 output "payment_app_fqdn" {
-  value = module.payment_app.fqdn
+  value = data.azurerm_container_app.payment.ingress[0].fqdn
 }
 
 output "product_app_fqdn" {
-  value = module.product_app.fqdn
+  value = data.azurerm_container_app.product.ingress[0].fqdn
 }
 
 output "user_app_fqdn" {
-  value = module.user_app.fqdn
+  value = data.azurerm_container_app.user.ingress[0].fqdn
 }
