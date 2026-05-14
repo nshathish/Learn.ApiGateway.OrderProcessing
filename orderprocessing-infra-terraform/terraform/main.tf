@@ -51,27 +51,38 @@ data "azurerm_container_app" "user" {
   resource_group_name = var.resource_group_name
 }
 
+locals {
+  cart_principal_id    = try(data.azurerm_container_app.cart.identity[0].principal_id, null)
+  payment_principal_id = try(data.azurerm_container_app.payment.identity[0].principal_id, null)
+  product_principal_id = try(data.azurerm_container_app.product.identity[0].principal_id, null)
+  user_principal_id    = try(data.azurerm_container_app.user.identity[0].principal_id, null)
+}
+
 # Grant AcrPull role to each Container App's managed identity
 resource "azurerm_role_assignment" "cart_acr_pull" {
+  count                = local.cart_principal_id != null ? 1 : 0
   scope                = module.acr.id
   role_definition_name = "AcrPull"
-  principal_id         = data.azurerm_container_app.cart.identity[0].principal_id
+  principal_id         = local.cart_principal_id
 }
 
 resource "azurerm_role_assignment" "payment_acr_pull" {
+  count                = local.payment_principal_id != null ? 1 : 0
   scope                = module.acr.id
   role_definition_name = "AcrPull"
-  principal_id         = data.azurerm_container_app.payment.identity[0].principal_id
+  principal_id         = local.payment_principal_id
 }
 
 resource "azurerm_role_assignment" "product_acr_pull" {
+  count                = local.product_principal_id != null ? 1 : 0
   scope                = module.acr.id
   role_definition_name = "AcrPull"
-  principal_id         = data.azurerm_container_app.product.identity[0].principal_id
+  principal_id         = local.product_principal_id
 }
 
 resource "azurerm_role_assignment" "user_acr_pull" {
+  count                = local.user_principal_id != null ? 1 : 0
   scope                = module.acr.id
   role_definition_name = "AcrPull"
-  principal_id         = data.azurerm_container_app.user.identity[0].principal_id
+  principal_id         = local.user_principal_id
 }
