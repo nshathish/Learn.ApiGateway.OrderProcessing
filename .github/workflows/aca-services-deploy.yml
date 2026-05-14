@@ -1,0 +1,126 @@
+name: Deploy Microservices to ACA
+
+on:
+    push:
+        branches:
+            - main
+        paths:
+            - "CartService/**"
+            - "ProductService/**"
+            - "UserService/**"
+            - "PaymentService/**"
+            - ".github/workflows/aca-services-deploy.yml"
+    workflow_run:
+        workflows:
+            - Deploy Infra (Terraform)
+        types:
+            - completed
+        branches:
+            - main
+    workflow_dispatch:
+        inputs:
+            environment:
+                description: "Environment to deploy"
+                required: true
+                default: "development"
+
+permissions:
+    id-token: write
+    contents: read
+
+env:
+    RESOURCE_GROUP_NAME: az204labs25715rg
+    PROJECT_NAME: az204labs
+
+jobs:
+    deploy:
+        name: Build, Push and Deploy Services
+        if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+        runs-on: ubuntu-latest
+
+        environment:
+            name: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || 'development' }}
+
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Azure Login (OIDC)
+              uses: azure/login@v2
+              with:
+                  client-id: ${{ secrets.AZURE_CLIENT_ID }}
+                  tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+                  subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+            - name: Resolve ACR details
+              shell: bash
+              run: |
+                  set -euo pipefail
+
+                  ACR_NAME=$(az acr list -g "$RESOURCE_GROUP_NAME" --query "[0].name" -o tsv)
+                  if [ -z "$ACR_NAME" ]; then
+                    echo "No ACR found in resource group $RESOURCE_GROUP_NAME"
+                    exit 1
+                  fi
+
+                  ACR_LOGIN_SERVER=$(az acr show -n "$ACR_NAME" -g "$RESOURCE_GROUP_NAME" --query "loginServer" -o tsv)
+
+                  echo "ACR_NAME=$ACR_NAME" >> "$GITHUB_ENV"
+                  echo "ACR_LOGIN_SERVER=$ACR_LOGIN_SERVER" >> "$GITHUB_ENV"
+
+            - name: Login to ACR
+              shell: bash
+              run: az acr login --name "$ACR_NAME"
+
+            - name: Build and push service images
+              shell: bash
+              run: |
+                  set -euo pipefail
+
+                  IMAGE_TAG=${GITHUB_SHA::7}
+                  echo "IMAGE_TAG=$IMAGE_TAG" >> "$GITHUB_ENV"
+
+                  docker build -f CartService/Dockerfile -t "$ACR_LOGIN_SERVER/cartservice:$IMAGE_TAG" CartService
+                  docker push "$ACR_LOGIN_SERVER/cartservice:$IMAGE_TAG"
+
+                  docker build -f ProductService/Dockerfile -t "$ACR_LOGIN_SERVER/productservice:$IMAGE_TAG" ProductService
+                  docker push "$ACR_LOGIN_SERVER/productservice:$IMAGE_TAG"
+
+                  docker build -f UserService/Dockerfile -t "$ACR_LOGIN_SERVER/userservice:$IMAGE_TAG" UserService
+                  docker push "$ACR_LOGIN_SERVER/userservice:$IMAGE_TAG"
+
+                  docker build -f PaymentService/Dockerfile -t "$ACR_LOGIN_SERVER/paymentservice:$IMAGE_TAG" PaymentService
+                  docker push "$ACR_LOGIN_SERVER/paymentservice:$IMAGE_TAG"
+
+            - name: Update Container Apps
+              shell: bash
+              run: |
+                  set -euo pipefail
+
+                  az containerapp update \
+                    --name "${PROJECT_NAME}-cart" \
+                    --resource-group "$RESOURCE_GROUP_NAME" \
+                    --image "$ACR_LOGIN_SERVER/cartservice:$IMAGE_TAG"
+
+                  az containerapp update \
+                    --name "${PROJECT_NAME}-product" \
+                    --resource-group "$RESOURCE_GROUP_NAME" \
+                    --image "$ACR_LOGIN_SERVER/productservice:$IMAGE_TAG"
+
+                  az containerapp update \
+                    --name "${PROJECT_NAME}-user" \
+                    --resource-group "$RESOURCE_GROUP_NAME" \
+                    --image "$ACR_LOGIN_SERVER/userservice:$IMAGE_TAG"
+
+                  az containerapp update \
+                    --name "${PROJECT_NAME}-payment" \
+                    --resource-group "$RESOURCE_GROUP_NAME" \
+                    --image "$ACR_LOGIN_SERVER/paymentservice:$IMAGE_TAG"
+
+            - name: Deployment summary
+              shell: bash
+              run: |
+                  echo "Deployed image tag: $IMAGE_TAG"
+                  echo "Resource group: $RESOURCE_GROUP_NAME"
+                  echo "Project name prefix: $PROJECT_NAME"
+                  echo "ACR login server: $ACR_LOGIN_SERVER"
