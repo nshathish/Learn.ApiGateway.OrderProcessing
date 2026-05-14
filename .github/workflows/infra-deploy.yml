@@ -72,8 +72,8 @@ jobs:
       - name: Show Terraform Plan
         run: terraform show -no-color tfplan
 
-      - name: Terraform Apply (only on push to main)
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      - name: Terraform Apply (push to main or manual trigger)
+        if: (github.ref == 'refs/heads/main' && github.event_name == 'push') || github.event_name == 'workflow_dispatch'
         run: terraform apply -auto-approve tfplan
 
       - name: Comment PR with Plan
