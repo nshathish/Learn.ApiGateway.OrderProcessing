@@ -31,5 +31,6 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 
 app.MapPaymentEndpoints();
+app.MapHealthChecks("/health");
 
 app.Run();

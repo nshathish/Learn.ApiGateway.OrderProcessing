@@ -27,8 +27,7 @@ app.UseHttpsRedirection();
 
 app.MapCheckoutEndpoints();
 app.MapOrderEndpoints();
-
-app.MapGet("/health", () => Results.Ok(new { status = "healthy" }));
+app.MapHealthChecks("/health");
 
 app.MapReverseProxy();
 

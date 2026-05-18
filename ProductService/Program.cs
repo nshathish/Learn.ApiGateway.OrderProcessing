@@ -25,5 +25,6 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 
 app.MapProductEndpoints();
+app.MapHealthChecks("/health");
 
 app.Run();
