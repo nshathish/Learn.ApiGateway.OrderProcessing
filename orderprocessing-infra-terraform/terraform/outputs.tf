@@ -20,12 +20,18 @@ output "acr_pull_identity_id" {
 # Container Apps
 output "container_apps_urls" {
   description = "URLs for accessing deployed container apps"
-  value       = module.container_apps.app_urls
+  value = merge(
+    module.container_apps.app_urls,
+    { apigateway = "https://${azurerm_container_app.apigateway.ingress[0].fqdn}" }
+  )
 }
 
 output "container_apps_names" {
   description = "Names of deployed container apps"
-  value       = module.container_apps.app_names
+  value = merge(
+    module.container_apps.app_names,
+    { apigateway = azurerm_container_app.apigateway.name }
+  )
 }
 
 # Individual service URLs (for convenience)
@@ -43,6 +49,10 @@ output "productservice_url" {
 
 output "userservice_url" {
   value = module.container_apps.app_urls["userservice"]
+}
+
+output "apigateway_url" {
+  value = "https://${azurerm_container_app.apigateway.ingress[0].fqdn}"
 }
 
 # Log Analytics

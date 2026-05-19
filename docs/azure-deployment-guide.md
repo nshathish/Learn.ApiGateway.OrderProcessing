@@ -9,23 +9,29 @@ Internet
 Azure Static Web Apps (Angular SPA)
     │  /api/* proxied to
     ▼
-Azure Container Apps — ApiGateway (external ingress, port 8080)
+Azure Container Apps — apigateway-app (external ingress, port 80)
     │  YARP routes via internal DNS
-    ├──▶ ca-cartservice    (internal)  ──▶ Azure SQL (carts-db)
-    │        └──▶ ca-productservice (internal)
-    ├──▶ ca-productservice (internal)  ──▶ Azure SQL (products-db)
-    ├──▶ ca-userservice    (internal)  ──▶ Azure SQL (users-db)
-    └──▶ ca-paymentservice (internal)  ──▶ Azure SQL (payments-db)
+    ├──▶ cartservice-app    (internal)  ──▶ SQLite (ephemeral or Azure Files volume)
+    │        └──▶ productservice-app (internal)
+    ├──▶ productservice-app (internal)  ──▶ SQLite (ephemeral or Azure Files volume)
+    ├──▶ userservice-app    (internal)  ──▶ SQLite (ephemeral or Azure Files volume)
+    └──▶ paymentservice-app (internal)  ──▶ SQLite (ephemeral or Azure Files volume)
                                            └──▶ Stripe API (external)
 
 All Container Apps:
-    ├──▶ Azure Key Vault       (secrets: JWT key, Stripe key, conn strings, Redis)
-    ├──▶ Azure Container Registry  (pull images via Managed Identity)
-    └──▶ Application Insights  (OpenTelemetry traces/logs)
+    ├──▶ Azure Key Vault       (secrets: JWT key, Stripe key, Redis conn string)
+    ├──▶ Azure Container Registry  (pull images via User-Assigned Managed Identity)
+    └──▶ Log Analytics Workspace   (container logs)
 
 ApiGateway only:
     └──▶ Azure Cache for Redis (distributed rate limiting)
 ```
+
+> **SQLite note:** Each service's SQLite database file lives on the container filesystem.
+> Data is **ephemeral** by default — it resets on every redeploy/restart. For persistence,
+> mount an Azure Files share (see [SQLite Persistence](#sqlite-persistence-in-containers)).
+> Because SQLite cannot handle concurrent writers, keep `min_replicas = 0` and
+> `max_replicas = 1` per service (already the Container Apps Consumption default).
 
 ---
 
@@ -38,62 +44,159 @@ ApiGateway only:
 | ProductService | Container Apps | Consumption | Internal ingress only |
 | UserService | Container Apps | Consumption | Internal ingress only |
 | PaymentService | Container Apps | Consumption | Internal ingress only |
-| Shared networking | Container Apps Environment | — | Already in Terraform |
-| Container images | Azure Container Registry | Basic | Already in Terraform |
-| Databases × 4 | Azure SQL Database | Basic 5 DTU | One per service |
-| Secrets | Azure Key Vault | Standard | One shared vault |
-| Caching | Azure Cache for Redis | Basic C0 | ApiGateway rate limiting |
-| Frontend SPA | Azure Static Web Apps | Free | Angular 21 app |
-| Monitoring | Application Insights | Pay-per-use | Linked to Log Analytics |
-| Log store | Log Analytics Workspace | PerGB2018 | Already in Terraform |
+| Shared networking | Container Apps Environment | — | Deployed by `modules/container_app` |
+| Container images | Azure Container Registry | Basic | Deployed by `modules/container_registry` |
+| Secrets | Azure Key Vault | Standard | One shared vault — **Missing** |
+| Caching | Azure Cache for Redis | Basic C0 | ApiGateway rate limiting — **Missing** |
+| Frontend SPA | Azure Static Web Apps | Free | Angular app — **Missing** |
+| Monitoring | Log Analytics Workspace | PerGB2018 | Direct resource in `main.tf` — Done |
+| SQLite persistence (optional) | Azure Files share | LRS | For data that survives redeployments |
 
 ---
 
 ## Terraform Coverage
 
-| Resource | Status |
-|----------|--------|
-| Resource Group | Done |
-| Azure Container Registry | Done (`modules/acr`) |
-| Log Analytics Workspace | Done (`modules/log_analytics`) |
-| Container Apps Environment | Done (`modules/container_app_env`) |
-| Container App module | Done (`modules/container_app`) — but not instantiated for all services |
-| AcrPull role assignments | Done (data-source based, fragile) |
-| Azure SQL Server + Databases | **Missing** |
-| Azure Key Vault | **Missing** |
-| Azure Cache for Redis | **Missing** |
-| Azure Static Web Apps | **Missing** |
-| Application Insights | **Missing** |
-| Container Apps for all 5 services | **Missing** (data sources reference pre-existing resources) |
+The actual module structure differs from earlier drafts of this guide.
+
+| Resource | Terraform reference | Status |
+|----------|--------------------|---------| 
+| Resource Group | `module.resource_group` | Done |
+| Azure Container Registry | `module.container_registry` | Done |
+| Log Analytics Workspace | `azurerm_log_analytics_workspace.this` (direct resource) | Done |
+| User-Assigned Identity (ACR pull) | `azurerm_user_assigned_identity.acr_pull_identity` | Done |
+| AcrPull role assignment | `azurerm_role_assignment.acr_pull_role` | Done |
+| Container Apps Environment | Embedded in `module.container_apps` | Done |
+| Container Apps (4 services) | `module.container_apps` via `microservices` map | Done |
+| ApiGateway Container App | Add to `microservices` map in `main.tf` | **Missing** |
+| Azure Key Vault | `modules/key_vault` (not yet created) | **Missing** |
+| Azure Cache for Redis | `modules/redis` (not yet created) | **Missing** |
+| Azure Static Web Apps | `modules/static_web_app` (not yet created) | **Missing** |
+| Application Insights | Not planned — using Log Analytics directly | Not needed |
+
+### Naming conventions in use
+
+| Pattern | Example (prefix=`azlabs13600`, env=`dev`) |
+|---------|------------------------------------------|
+| Resource Group | `azlabs13600-dev-rg` |
+| ACR | `azlabs13600devacr` (no hyphens — ACR constraint) |
+| Log Analytics | `azlabs13600-dev-logs` |
+| Container App Env | `azlabs13600-dev-env` |
+| Container Apps | `cartservice-app`, `productservice-app`, … |
+| Key Vault | `azlabs13600-dev-kv` |
+| Redis | `azlabs13600-dev-redis` |
+| Static Web App | `azlabs13600-dev-ui` |
 
 ---
 
-## Missing Terraform Modules
+## Step 1 — Add ApiGateway to the microservices map
+
+In `orderprocessing-infra-terraform/terraform/main.tf`, add `apigateway` to the `microservices`
+map inside `module "container_apps"`. Also switch `cartservice` to `external = false` so only
+the gateway is publicly reachable:
+
+```hcl
+module "container_apps" {
+  source = "./modules/container_app"
+
+  environment_name           = "${var.prefix}-${var.environment}-env"
+  resource_group_name        = module.resource_group.name
+  location                   = module.resource_group.location
+  log_analytics_workspace_id = azurerm_log_analytics_workspace.this.id
+  acr_login_server           = module.container_registry.login_server
+  acr_pull_identity_id       = azurerm_user_assigned_identity.acr_pull_identity.id
+
+  microservices = {
+    apigateway = {
+      tag         = "latest"
+      cpu         = "0.5"
+      memory      = "1.0Gi"
+      target_port = 80
+      external    = true   # Only the gateway is public
+      env_vars = {
+        "ASPNETCORE_ENVIRONMENT" = var.environment
+        "SERVICE_NAME"           = "ApiGateway"
+      }
+    }
+
+    cartservice = {
+      tag         = "latest"
+      cpu         = "0.5"
+      memory      = "1.0Gi"
+      target_port = 80
+      external    = false  # Internal — reached via gateway
+      env_vars = {
+        "ASPNETCORE_ENVIRONMENT" = var.environment
+        "SERVICE_NAME"           = "CartService"
+      }
+    }
+
+    paymentservice = {
+      tag         = "latest"
+      cpu         = "0.5"
+      memory      = "1.0Gi"
+      target_port = 80
+      external    = false
+      env_vars = {
+        "ASPNETCORE_ENVIRONMENT" = var.environment
+        "SERVICE_NAME"           = "PaymentService"
+      }
+    }
+
+    productservice = {
+      tag         = "latest"
+      cpu         = "0.5"
+      memory      = "1.0Gi"
+      target_port = 80
+      external    = false
+      env_vars = {
+        "ASPNETCORE_ENVIRONMENT" = var.environment
+        "SERVICE_NAME"           = "ProductService"
+      }
+    }
+
+    userservice = {
+      tag         = "latest"
+      cpu         = "0.5"
+      memory      = "1.0Gi"
+      target_port = 80
+      external    = false
+      env_vars = {
+        "ASPNETCORE_ENVIRONMENT" = var.environment
+        "SERVICE_NAME"           = "UserService"
+      }
+    }
+  }
+
+  depends_on = [azurerm_role_assignment.acr_pull_role]
+
+  tags = {
+    Environment = var.environment
+    Project     = var.prefix
+  }
+}
+```
+
+Add the gateway URL to `outputs.tf`:
+
+```hcl
+output "apigateway_url" {
+  value = module.container_apps.app_urls["apigateway"]
+}
+```
+
+---
+
+## Step 2 — Missing Terraform Modules
 
 ### `modules/key_vault/variables.tf`
 
 ```hcl
-variable "name" {
-  type = string
-}
-
-variable "resource_group_name" {
-  type = string
-}
-
-variable "location" {
-  type = string
-}
-
-variable "tenant_id" {
-  type        = string
-  description = "Azure AD tenant ID — use data.azurerm_client_config.current.tenant_id"
-}
-
-variable "tags" {
-  type    = map(string)
-  default = {}
-}
+variable "name" { type = string }
+variable "resource_group_name" { type = string }
+variable "location" { type = string }
+variable "tenant_id" { type = string }
+variable "app_principal_ids" { type = map(string) }
+variable "tags" { type = map(string); default = {} }
 ```
 
 ### `modules/key_vault/main.tf`
@@ -110,132 +213,30 @@ resource "azurerm_key_vault" "this" {
   soft_delete_retention_days = 7
   purge_protection_enabled   = false
 
-  # Allow the deploying principal to manage secrets during bootstrap
   access_policy {
     tenant_id = var.tenant_id
     object_id = data.azurerm_client_config.current.object_id
-
     secret_permissions = ["Get", "Set", "List", "Delete", "Purge"]
   }
 
   tags = var.tags
 }
 
-# Grant each Container App's Managed Identity read access to secrets
 resource "azurerm_key_vault_access_policy" "app" {
   for_each = var.app_principal_ids
 
   key_vault_id = azurerm_key_vault.this.id
   tenant_id    = var.tenant_id
   object_id    = each.value
-
   secret_permissions = ["Get", "List"]
 }
 ```
 
-> Add `variable "app_principal_ids" { type = map(string) }` to `variables.tf` — pass a map of
-> `{ cart = module.ca_cart.system_assigned_identity_principal_id, ... }` from `main.tf`.
-
 ### `modules/key_vault/outputs.tf`
 
 ```hcl
-output "id" {
-  value = azurerm_key_vault.this.id
-}
-
-output "uri" {
-  value = azurerm_key_vault.this.vault_uri
-}
-```
-
----
-
-### `modules/sql_server/variables.tf`
-
-```hcl
-variable "server_name" {
-  type        = string
-  description = "Globally unique SQL Server name"
-}
-
-variable "resource_group_name" {
-  type = string
-}
-
-variable "location" {
-  type = string
-}
-
-variable "database_names" {
-  type        = list(string)
-  description = "Names of databases to create (one per service)"
-}
-
-variable "admin_login" {
-  type        = string
-  description = "SQL admin username — store password in Key Vault, not here"
-}
-
-variable "admin_password" {
-  type      = string
-  sensitive = true
-}
-
-variable "tags" {
-  type    = map(string)
-  default = {}
-}
-```
-
-### `modules/sql_server/main.tf`
-
-```hcl
-resource "azurerm_mssql_server" "this" {
-  name                         = var.server_name
-  resource_group_name          = var.resource_group_name
-  location                     = var.location
-  version                      = "12.0"
-  administrator_login          = var.admin_login
-  administrator_login_password = var.admin_password
-
-  azuread_administrator {
-    login_username              = "AzureAD Admin"
-    object_id                   = data.azurerm_client_config.current.object_id
-    azuread_authentication_only = false
-  }
-
-  tags = var.tags
-}
-
-data "azurerm_client_config" "current" {}
-
-resource "azurerm_mssql_database" "this" {
-  for_each  = toset(var.database_names)
-  name      = each.key
-  server_id = azurerm_mssql_server.this.id
-  sku_name  = "Basic"   # 5 DTU — ~$5/month each
-  tags      = var.tags
-}
-
-# Allow Azure services (Container Apps) to reach the server
-resource "azurerm_mssql_firewall_rule" "azure_services" {
-  name             = "AllowAzureServices"
-  server_id        = azurerm_mssql_server.this.id
-  start_ip_address = "0.0.0.0"
-  end_ip_address   = "0.0.0.0"
-}
-```
-
-### `modules/sql_server/outputs.tf`
-
-```hcl
-output "server_fqdn" {
-  value = azurerm_mssql_server.this.fully_qualified_domain_name
-}
-
-output "database_names" {
-  value = keys(azurerm_mssql_database.this)
-}
+output "id"  { value = azurerm_key_vault.this.id }
+output "uri" { value = azurerm_key_vault.this.vault_uri }
 ```
 
 ---
@@ -243,22 +244,10 @@ output "database_names" {
 ### `modules/redis/variables.tf`
 
 ```hcl
-variable "name" {
-  type = string
-}
-
-variable "resource_group_name" {
-  type = string
-}
-
-variable "location" {
-  type = string
-}
-
-variable "tags" {
-  type    = map(string)
-  default = {}
-}
+variable "name" { type = string }
+variable "resource_group_name" { type = string }
+variable "location" { type = string }
+variable "tags" { type = map(string); default = {} }
 ```
 
 ### `modules/redis/main.tf`
@@ -270,7 +259,7 @@ resource "azurerm_redis_cache" "this" {
   location            = var.location
   capacity            = 0
   family              = "C"
-  sku_name            = "Basic"   # C0 — ~$16/month
+  sku_name            = "Basic"
   enable_non_ssl_port = false
   minimum_tls_version = "1.2"
   tags                = var.tags
@@ -280,76 +269,16 @@ resource "azurerm_redis_cache" "this" {
 ### `modules/redis/outputs.tf`
 
 ```hcl
-output "hostname" {
-  value = azurerm_redis_cache.this.hostname
-}
-
-output "ssl_port" {
-  value = azurerm_redis_cache.this.ssl_port
-}
-
-output "primary_access_key" {
-  value     = azurerm_redis_cache.this.primary_access_key
-  sensitive = true
-}
+output "hostname"   { value = azurerm_redis_cache.this.hostname }
+output "ssl_port"   { value = azurerm_redis_cache.this.ssl_port }
 
 output "connection_string" {
   value     = "${azurerm_redis_cache.this.hostname}:${azurerm_redis_cache.this.ssl_port},password=${azurerm_redis_cache.this.primary_access_key},ssl=True,abortConnect=False"
   sensitive = true
 }
-```
 
----
-
-### `modules/app_insights/variables.tf`
-
-```hcl
-variable "name" {
-  type = string
-}
-
-variable "resource_group_name" {
-  type = string
-}
-
-variable "location" {
-  type = string
-}
-
-variable "workspace_id" {
-  type        = string
-  description = "Log Analytics Workspace ID — use module.log_analytics.workspace_id"
-}
-
-variable "tags" {
-  type    = map(string)
-  default = {}
-}
-```
-
-### `modules/app_insights/main.tf`
-
-```hcl
-resource "azurerm_application_insights" "this" {
-  name                = var.name
-  resource_group_name = var.resource_group_name
-  location            = var.location
-  workspace_id        = var.workspace_id
-  application_type    = "web"
-  tags                = var.tags
-}
-```
-
-### `modules/app_insights/outputs.tf`
-
-```hcl
-output "connection_string" {
-  value     = azurerm_application_insights.this.connection_string
-  sensitive = true
-}
-
-output "instrumentation_key" {
-  value     = azurerm_application_insights.this.instrumentation_key
+output "primary_access_key" {
+  value     = azurerm_redis_cache.this.primary_access_key
   sensitive = true
 }
 ```
@@ -359,23 +288,13 @@ output "instrumentation_key" {
 ### `modules/static_web_app/variables.tf`
 
 ```hcl
-variable "name" {
-  type = string
-}
-
-variable "resource_group_name" {
-  type = string
-}
-
+variable "name" { type = string }
+variable "resource_group_name" { type = string }
 variable "location" {
   type        = string
-  description = "Static Web Apps only supports a subset of regions — use eastus2, westus2, centralus, eastasia, westeurope, eastus, or uksouth"
+  description = "Supported regions: eastus2, westus2, centralus, eastasia, westeurope, eastus, uksouth"
 }
-
-variable "tags" {
-  type    = map(string)
-  default = {}
-}
+variable "tags" { type = map(string); default = {} }
 ```
 
 ### `modules/static_web_app/main.tf`
@@ -394,298 +313,190 @@ resource "azurerm_static_web_app" "this" {
 ### `modules/static_web_app/outputs.tf`
 
 ```hcl
-output "default_hostname" {
-  value = azurerm_static_web_app.this.default_host_name
-}
+output "default_hostname" { value = azurerm_static_web_app.this.default_host_name }
 
 output "api_key" {
-  value     = azurerm_static_web_app.this.api_key
-  sensitive = true
+  value       = azurerm_static_web_app.this.api_key
+  sensitive   = true
   description = "Deployment token — add to GitHub Actions secret SWA_DEPLOY_TOKEN"
 }
 ```
 
 ---
 
-## Updated `main.tf` — Additions
+## Step 3 — Wire up Key Vault, Redis, and Static Web App in `main.tf`
 
-Add the following blocks to `orderprocessing-infra-terraform/terraform/main.tf`. Replace the
-`data "azurerm_container_app"` data sources and the fragile role assignments with proper
-`module` calls.
+The `module.container_apps` module uses a single `UserAssigned` identity shared across all
+apps (`azurerm_user_assigned_identity.acr_pull_identity`). Use that identity's principal ID for
+Key Vault access policies.
 
 ```hcl
-# ── Application Insights ────────────────────────────────────────────────────
-module "app_insights" {
-  source = "./modules/app_insights"
+data "azurerm_client_config" "current" {}
 
-  name                = "${var.project_name}-ai"
-  resource_group_name = azurerm_resource_group.rg.name
-  location            = azurerm_resource_group.rg.location
-  workspace_id        = module.log_analytics.workspace_id
-  tags                = var.tags
-}
+# ── Key Vault ────────────────────────────────────────────────────────────────
+module "key_vault" {
+  source = "./modules/key_vault"
 
-# ── SQL Server + 4 databases ─────────────────────────────────────────────────
-module "sql_server" {
-  source = "./modules/sql_server"
+  name                = "${var.prefix}-${var.environment}-kv"
+  resource_group_name = module.resource_group.name
+  location            = module.resource_group.location
+  tenant_id           = data.azurerm_client_config.current.tenant_id
+  tags = {
+    Environment = var.environment
+    Project     = var.prefix
+  }
 
-  server_name         = "${var.project_name}-sql"
-  resource_group_name = azurerm_resource_group.rg.name
-  location            = azurerm_resource_group.rg.location
-  database_names      = ["products-db", "carts-db", "users-db", "payments-db"]
-  admin_login         = var.sql_admin_login
-  admin_password      = var.sql_admin_password
-  tags                = var.tags
+  # All services share the same user-assigned identity for ACR pull;
+  # grant it Key Vault read access for secrets.
+  app_principal_ids = {
+    apps = azurerm_user_assigned_identity.acr_pull_identity.principal_id
+  }
 }
 
 # ── Redis ────────────────────────────────────────────────────────────────────
 module "redis" {
   source = "./modules/redis"
 
-  name                = "${var.project_name}-redis"
-  resource_group_name = azurerm_resource_group.rg.name
-  location            = azurerm_resource_group.rg.location
-  tags                = var.tags
-}
-
-# ── Container Apps ───────────────────────────────────────────────────────────
-module "ca_product" {
-  source = "./modules/container_app"
-
-  name                 = "${var.project_name}-product"
-  resource_group_name  = azurerm_resource_group.rg.name
-  location             = azurerm_resource_group.rg.location
-  environment_id       = module.container_app_env.environment_id
-  image                = var.product_image
-  cpu                  = var.container_cpu
-  memory               = var.container_memory
-  container_port       = var.container_port
-  acr_id               = module.acr.id
-  acr_login_server     = module.acr.login_server
-}
-
-module "ca_cart" {
-  source = "./modules/container_app"
-
-  name                 = "${var.project_name}-cart"
-  resource_group_name  = azurerm_resource_group.rg.name
-  location             = azurerm_resource_group.rg.location
-  environment_id       = module.container_app_env.environment_id
-  image                = var.cart_image
-  cpu                  = var.container_cpu
-  memory               = var.container_memory
-  container_port       = var.container_port
-  acr_id               = module.acr.id
-  acr_login_server     = module.acr.login_server
-}
-
-module "ca_user" {
-  source = "./modules/container_app"
-
-  name                 = "${var.project_name}-user"
-  resource_group_name  = azurerm_resource_group.rg.name
-  location             = azurerm_resource_group.rg.location
-  environment_id       = module.container_app_env.environment_id
-  image                = var.user_image
-  cpu                  = var.container_cpu
-  memory               = var.container_memory
-  container_port       = var.container_port
-  acr_id               = module.acr.id
-  acr_login_server     = module.acr.login_server
-}
-
-module "ca_payment" {
-  source = "./modules/container_app"
-
-  name                 = "${var.project_name}-payment"
-  resource_group_name  = azurerm_resource_group.rg.name
-  location             = azurerm_resource_group.rg.location
-  environment_id       = module.container_app_env.environment_id
-  image                = var.payment_image
-  cpu                  = var.container_cpu
-  memory               = var.container_memory
-  container_port       = var.container_port
-  acr_id               = module.acr.id
-  acr_login_server     = module.acr.login_server
-}
-
-module "ca_gateway" {
-  source = "./modules/container_app"
-
-  name                 = "${var.project_name}-gateway"
-  resource_group_name  = azurerm_resource_group.rg.name
-  location             = azurerm_resource_group.rg.location
-  environment_id       = module.container_app_env.environment_id
-  image                = var.gateway_image
-  cpu                  = var.container_cpu
-  memory               = var.container_memory
-  container_port       = var.container_port
-  acr_id               = module.acr.id
-  acr_login_server     = module.acr.login_server
-}
-
-# ── Key Vault ────────────────────────────────────────────────────────────────
-module "key_vault" {
-  source = "./modules/key_vault"
-
-  name                = "${var.project_name}-kv"
-  resource_group_name = azurerm_resource_group.rg.name
-  location            = azurerm_resource_group.rg.location
-  tenant_id           = data.azurerm_client_config.current.tenant_id
-  tags                = var.tags
-
-  app_principal_ids = {
-    cart    = module.ca_cart.system_assigned_identity_principal_id
-    product = module.ca_product.system_assigned_identity_principal_id
-    user    = module.ca_user.system_assigned_identity_principal_id
-    payment = module.ca_payment.system_assigned_identity_principal_id
-    gateway = module.ca_gateway.system_assigned_identity_principal_id
+  name                = "${var.prefix}-${var.environment}-redis"
+  resource_group_name = module.resource_group.name
+  location            = module.resource_group.location
+  tags = {
+    Environment = var.environment
+    Project     = var.prefix
   }
 }
 
-data "azurerm_client_config" "current" {}
-
-# ── Key Vault Secrets ────────────────────────────────────────────────────────
-resource "azurerm_key_vault_secret" "appinsights_conn" {
-  name         = "ApplicationInsights--ConnectionString"
-  value        = module.app_insights.connection_string
-  key_vault_id = module.key_vault.id
-}
-
+# ── Key Vault Secrets ─────────────────────────────────────────────────────────
 resource "azurerm_key_vault_secret" "redis_conn" {
   name         = "Redis--ConnectionString"
   value        = module.redis.connection_string
   key_vault_id = module.key_vault.id
 }
 
-# Connection strings for each service (Managed Identity auth — no password in string)
-resource "azurerm_key_vault_secret" "conn_products" {
-  name         = "ConnectionStrings--DefaultConnection--Products"
-  value        = "Server=tcp:${module.sql_server.server_fqdn},1433;Initial Catalog=products-db;Authentication=Active Directory Managed Identity;Encrypt=True;"
-  key_vault_id = module.key_vault.id
-}
-
-resource "azurerm_key_vault_secret" "conn_carts" {
-  name         = "ConnectionStrings--DefaultConnection--Carts"
-  value        = "Server=tcp:${module.sql_server.server_fqdn},1433;Initial Catalog=carts-db;Authentication=Active Directory Managed Identity;Encrypt=True;"
-  key_vault_id = module.key_vault.id
-}
-
-resource "azurerm_key_vault_secret" "conn_users" {
-  name         = "ConnectionStrings--DefaultConnection--Users"
-  value        = "Server=tcp:${module.sql_server.server_fqdn},1433;Initial Catalog=users-db;Authentication=Active Directory Managed Identity;Encrypt=True;"
-  key_vault_id = module.key_vault.id
-}
-
-resource "azurerm_key_vault_secret" "conn_payments" {
-  name         = "ConnectionStrings--DefaultConnection--Payments"
-  value        = "Server=tcp:${module.sql_server.server_fqdn},1433;Initial Catalog=payments-db;Authentication=Active Directory Managed Identity;Encrypt=True;"
-  key_vault_id = module.key_vault.id
-}
-
-# ── AcrPull role assignments (managed here, not via data sources) ─────────────
-resource "azurerm_role_assignment" "acr_pull" {
-  for_each = {
-    cart    = module.ca_cart.system_assigned_identity_principal_id
-    product = module.ca_product.system_assigned_identity_principal_id
-    user    = module.ca_user.system_assigned_identity_principal_id
-    payment = module.ca_payment.system_assigned_identity_principal_id
-    gateway = module.ca_gateway.system_assigned_identity_principal_id
-  }
-
-  scope                = module.acr.id
-  role_definition_name = "AcrPull"
-  principal_id         = each.value
-}
+# Add Stripe secret manually after first apply (see Deployment Steps)
 
 # ── Static Web App ────────────────────────────────────────────────────────────
 module "static_web_app" {
   source = "./modules/static_web_app"
 
-  name                = "${var.project_name}-ui"
-  resource_group_name = azurerm_resource_group.rg.name
-  location            = azurerm_resource_group.rg.location
-  tags                = var.tags
+  name                = "${var.prefix}-${var.environment}-ui"
+  resource_group_name = module.resource_group.name
+  location            = module.resource_group.location
+  tags = {
+    Environment = var.environment
+    Project     = var.prefix
+  }
 }
 ```
 
----
-
-## Additional Variables to Add to `variables.tf`
+Add to `outputs.tf`:
 
 ```hcl
-variable "gateway_image" {
-  type        = string
-  description = "ACR image tag for ApiGateway"
-  default     = "az204labsacr.azurecr.io/apigateway:latest"
+output "static_web_app_url" {
+  value = module.static_web_app.default_hostname
 }
 
-variable "sql_admin_login" {
-  type        = string
-  description = "SQL Server administrator username"
-  default     = "sqladmin"
-}
-
-variable "sql_admin_password" {
-  type        = string
-  sensitive   = true
-  description = "SQL Server administrator password — supply via TF_VAR_sql_admin_password env var, never commit"
+output "key_vault_uri" {
+  value = module.key_vault.uri
 }
 ```
 
 ---
 
-## Application Code Changes Required
+## SQLite Persistence in Containers
 
-### 1. SQLite → SQL Server (each service)
+By default, SQLite database files live on the container's ephemeral filesystem and are
+**deleted on every redeploy or restart**. For a dev/learning environment this is often fine —
+EF Core recreates the schema on startup if you call `EnsureCreated()`.
 
-In each service's `Program.cs`, change the EF Core provider:
+### Option A — Ephemeral (default, no extra Azure resources)
 
-```csharp
-// Before
-builder.Services.AddDbContext<ProductDbContext>(options =>
-    options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
+No changes needed. Data resets on each deploy. Suitable for testing.
 
-// After
-builder.Services.AddDbContext<ProductDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
-```
+### Option B — Persistent via Azure Files
 
-Add the SQL Server EF Core package to each service `.csproj`:
+Create an Azure Files share and mount it into each container app. The SQLite file persists
+across restarts and redeployments.
 
-```xml
-<PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.*" />
-```
+1. Create a storage account and file share (add to `main.tf`):
 
-You can remove `Microsoft.EntityFrameworkCore.Sqlite` after switching.
+```hcl
+resource "azurerm_storage_account" "sqlite" {
+  name                     = "${var.prefix}${var.environment}sqlite"
+  resource_group_name      = module.resource_group.name
+  location                 = module.resource_group.location
+  account_tier             = "Standard"
+  account_replication_type = "LRS"
+}
 
-### 2. Key Vault Configuration (each service `Program.cs`)
+resource "azurerm_storage_share" "db" {
+  for_each = toset(["cartservice", "productservice", "userservice", "paymentservice"])
 
-Add the Azure Key Vault configuration provider at startup so secrets override `appsettings.json`:
-
-```csharp
-// Add NuGet: Azure.Extensions.AspNetCore.Configuration.Secrets
-// Add NuGet: Azure.Identity
-
-if (builder.Environment.IsProduction())
-{
-    var keyVaultUri = new Uri($"https://{builder.Configuration["KeyVault:Name"]}.vault.azure.net/");
-    builder.Configuration.AddAzureKeyVault(keyVaultUri, new DefaultAzureCredential());
+  name                 = "${each.key}-db"
+  storage_account_id   = azurerm_storage_account.sqlite.id
+  quota                = 1
 }
 ```
 
-Set the `KeyVault__Name` environment variable on each Container App to `az204labs-kv`.
+2. Add the storage account to the Container Apps Environment:
 
-### 3. EF Core Migrations
+```hcl
+resource "azurerm_container_app_environment_storage" "db" {
+  for_each = toset(["cartservice", "productservice", "userservice", "paymentservice"])
 
-Run migrations against each Azure SQL database after the first `terraform apply`:
-
-```bash
-# From solution root — repeat for each service
-dotnet ef database update \
-  --project ProductService \
-  --connection "Server=tcp:<server>.database.windows.net,1433;Initial Catalog=products-db;User ID=sqladmin;Password=<password>;Encrypt=True;"
+  name                         = "${each.key}-storage"
+  container_app_environment_id = azurerm_container_app_environment.this.id
+  account_name                 = azurerm_storage_account.sqlite.name
+  share_name                   = azurerm_storage_share.db[each.key].name
+  access_key                   = azurerm_storage_account.sqlite.primary_access_key
+  access_mode                  = "ReadWrite"
+}
 ```
+
+3. Mount the volume in each service's container template via the `modules/container_app` module
+   (requires adding `volume` and `volume_mount` blocks to `main.tf` there), then set the
+   connection string to point at the mounted path, e.g.
+   `Data Source=/data/app.db`.
+
+> The `azurerm_container_app_environment_storage` resource is not yet in the
+> `modules/container_app` module — you'll need to add volume mount support there or wire
+> it up directly in `main.tf`.
+
+---
+
+## Application Code — No Database Change Required
+
+Keep SQLite and the existing EF Core setup. No provider switch needed.
+
+### Key Vault Configuration (each service `Program.cs`)
+
+```csharp
+// NuGet: Azure.Extensions.AspNetCore.Configuration.Secrets + Azure.Identity
+if (builder.Environment.IsProduction())
+{
+    var kvUri = new Uri($"https://{builder.Configuration["KeyVault:Name"]}.vault.azure.net/");
+    builder.Configuration.AddAzureKeyVault(kvUri, new DefaultAzureCredential());
+}
+```
+
+Set `KeyVault__Name` as an environment variable on each Container App to
+`${var.prefix}-${var.environment}-kv` (e.g. `azlabs13600-dev-kv`). Add it to the
+`env_vars` map for each microservice in `main.tf`.
+
+### SQLite connection string for containers
+
+In `appsettings.json` (or via env var), point the connection string at a writable path:
+
+```json
+{
+  "ConnectionStrings": {
+    "DefaultConnection": "Data Source=/tmp/app.db"
+  }
+}
+```
+
+Use `/tmp/app.db` for ephemeral storage or `/data/app.db` if you mount an Azure Files volume
+at `/data`.
 
 ---
 
@@ -698,41 +509,45 @@ dotnet ef database update \
 az login
 az account set --subscription <subscription-id>
 
-# 2. Build and push images
-az acr login --name az204labsacr
-docker build -t az204labsacr.azurecr.io/apigateway:latest    -f ApiGateway/Dockerfile .
-docker build -t az204labsacr.azurecr.io/cartservice:latest   -f CartService/Dockerfile .
-docker build -t az204labsacr.azurecr.io/productservice:latest -f ProductService/Dockerfile .
-docker build -t az204labsacr.azurecr.io/userservice:latest   -f UserService/Dockerfile .
-docker build -t az204labsacr.azurecr.io/paymentservice:latest -f PaymentService/Dockerfile .
-docker push az204labsacr.azurecr.io/apigateway:latest
-docker push az204labsacr.azurecr.io/cartservice:latest
-docker push az204labsacr.azurecr.io/productservice:latest
-docker push az204labsacr.azurecr.io/userservice:latest
-docker push az204labsacr.azurecr.io/paymentservice:latest
+# 2. Build and push images to ACR (name: azlabs13600devacr)
+az acr login --name azlabs13600devacr
+docker build -t azlabs13600devacr.azurecr.io/apigateway:latest     -f ApiGateway/Dockerfile .
+docker build -t azlabs13600devacr.azurecr.io/cartservice:latest    -f CartService/Dockerfile .
+docker build -t azlabs13600devacr.azurecr.io/productservice:latest -f ProductService/Dockerfile .
+docker build -t azlabs13600devacr.azurecr.io/userservice:latest    -f UserService/Dockerfile .
+docker build -t azlabs13600devacr.azurecr.io/paymentservice:latest -f PaymentService/Dockerfile .
+docker push azlabs13600devacr.azurecr.io/apigateway:latest
+docker push azlabs13600devacr.azurecr.io/cartservice:latest
+docker push azlabs13600devacr.azurecr.io/productservice:latest
+docker push azlabs13600devacr.azurecr.io/userservice:latest
+docker push azlabs13600devacr.azurecr.io/paymentservice:latest
 
 # 3. Apply infrastructure
 cd orderprocessing-infra-terraform/terraform
-export TF_VAR_sql_admin_password="<strong-password>"
 terraform init
 terraform apply
 
-# 4. Run EF migrations (after apply)
-dotnet ef database update --project ProductService ...
-dotnet ef database update --project CartService ...
-dotnet ef database update --project UserService ...
-dotnet ef database update --project PaymentService ...
-
-# 5. Add Stripe secret to Key Vault manually
+# 4. Add Stripe secret to Key Vault manually (after apply)
 az keyvault secret set \
-  --vault-name az204labs-kv \
+  --vault-name azlabs13600-dev-kv \
   --name "Stripe--SecretKey" \
   --value "<stripe-secret-key>"
 
-# 6. Deploy Angular SPA
+# 5. Deploy Angular SPA
 cd OrderProcessingUI
 pnpm build
-# Upload dist/ to Static Web App using the API key output from terraform
+# Upload dist/ to Static Web App using the api_key output from terraform
+```
+
+### Updating a service image
+
+```bash
+docker build -t azlabs13600devacr.azurecr.io/productservice:latest -f ProductService/Dockerfile .
+docker push azlabs13600devacr.azurecr.io/productservice:latest
+az containerapp update \
+  --name productservice-app \
+  --resource-group azlabs13600-dev-rg \
+  --image azlabs13600devacr.azurecr.io/productservice:latest
 ```
 
 ### GitHub Actions CI/CD (recommended)
@@ -748,14 +563,16 @@ Add the Static Web App API key and ACR credentials as GitHub Actions secrets, th
 | Service | SKU | Cost/month |
 |---------|-----|-----------|
 | Container Apps × 5 (low traffic) | Consumption | ~$5–10 |
-| Azure SQL Database × 4 | Basic 5 DTU | ~$20 |
 | Azure Container Registry | Basic | ~$5 |
 | Azure Key Vault | Standard | ~$1 |
 | Azure Cache for Redis | Basic C0 | ~$16 |
-| Application Insights | Pay-per-GB | ~$0–5 |
-| Static Web Apps | Free | $0 |
 | Log Analytics Workspace | PerGB2018 | ~$2 |
-| **Total** | | **~$49–59/month** |
+| Static Web Apps | Free | $0 |
+| Azure Files (SQLite persistence, optional) | Standard LRS | ~$1 |
+| **Total** | | **~$29–35/month** |
 
-Redis is optional for MVP — without it rate limiting in ApiGateway will be per-instance rather
-than global, but the service will function correctly. Dropping Redis saves ~$16/month.
+> Redis is optional for MVP — without it, rate limiting in ApiGateway is per-instance rather
+> than global, but everything else works. Dropping Redis saves ~$16/month (~$13–19/month total).
+>
+> Compared to using Azure SQL (4 × Basic = ~$20/month), SQLite saves ~$20/month with no
+> meaningful tradeoff for a single-instance dev/learning setup.
