@@ -1,88 +1,133 @@
-resource "azurerm_resource_group" "rg" {
-  name     = var.resource_group_name
+module "resource_group" {
+  source = "./modules/resource_group"
+
+  name     = "${var.prefix}-${var.environment}-rg"
   location = var.location
-  tags     = var.tags
+
+  tags = {
+    Environment = var.environment
+    Project     = var.prefix
+    ManagedBy   = "Terraform"
+  }
 }
 
-module "acr" {
-  source = "./modules/acr"
+module "container_registry" {
+  source = "./modules/container_registry"
 
-  name                = "${var.project_name}acr"
-  resource_group_name = azurerm_resource_group.rg.name
-  location            = azurerm_resource_group.rg.location
-  sku                 = var.acr_sku
+  name                    = "${var.prefix}${var.environment}acr" # Must be globally unique, no hyphens
+  resource_group_name     = module.resource_group.name
+  location                = module.resource_group.location
+  sku                     = var.acr_sku
+  enable_managed_identity = var.enable_acr_managed_identity
+
+  tags = {
+    Environment = var.environment
+    Project     = var.prefix
+    ManagedBy   = "Terraform"
+  }
 }
 
-module "log_analytics" {
-  source = "./modules/log_analytics"
+# NEW: User-assigned managed identity for Container Apps to pull from ACR
+resource "azurerm_user_assigned_identity" "acr_pull_identity" {
+  name                = "${var.prefix}-${var.environment}-acr-pull-id"
+  resource_group_name = module.resource_group.name
+  location            = module.resource_group.location
 
-  name                = "${var.project_name}-law"
-  resource_group_name = azurerm_resource_group.rg.name
-  location            = azurerm_resource_group.rg.location
+  tags = {
+    Environment = var.environment
+    Project     = var.prefix
+    Purpose     = "ACR Pull for Container Apps"
+  }
 }
 
-module "container_app_env" {
-  source = "./modules/container_app_env"
-
-  name                = "${var.project_name}-cae"
-  resource_group_name = azurerm_resource_group.rg.name
-  location            = azurerm_resource_group.rg.location
-  log_analytics_id    = module.log_analytics.workspace_id
-}
-
-# Reference existing Container Apps using data sources
-data "azurerm_container_app" "cart" {
-  name                = "${var.project_name}-cart"
-  resource_group_name = var.resource_group_name
-}
-
-data "azurerm_container_app" "payment" {
-  name                = "${var.project_name}-payment"
-  resource_group_name = var.resource_group_name
-}
-
-data "azurerm_container_app" "product" {
-  name                = "${var.project_name}-product"
-  resource_group_name = var.resource_group_name
-}
-
-data "azurerm_container_app" "user" {
-  name                = "${var.project_name}-user"
-  resource_group_name = var.resource_group_name
-}
-
-locals {
-  cart_principal_id    = try(data.azurerm_container_app.cart.identity[0].principal_id, null)
-  payment_principal_id = try(data.azurerm_container_app.payment.identity[0].principal_id, null)
-  product_principal_id = try(data.azurerm_container_app.product.identity[0].principal_id, null)
-  user_principal_id    = try(data.azurerm_container_app.user.identity[0].principal_id, null)
-}
-
-# Grant AcrPull role to each Container App's managed identity
-resource "azurerm_role_assignment" "cart_acr_pull" {
-  count                = local.cart_principal_id != null ? 1 : 0
-  scope                = module.acr.id
+# Grant the identity permission to pull from ACR
+resource "azurerm_role_assignment" "acr_pull_role" {
+  principal_id         = azurerm_user_assigned_identity.acr_pull_identity.principal_id
   role_definition_name = "AcrPull"
-  principal_id         = local.cart_principal_id
+  scope                = module.container_registry.id
 }
 
-resource "azurerm_role_assignment" "payment_acr_pull" {
-  count                = local.payment_principal_id != null ? 1 : 0
-  scope                = module.acr.id
-  role_definition_name = "AcrPull"
-  principal_id         = local.payment_principal_id
+# NEW: Log Analytics Workspace for Container Apps monitoring
+resource "azurerm_log_analytics_workspace" "this" {
+  name                = "${var.prefix}-${var.environment}-logs"
+  location            = module.resource_group.location
+  resource_group_name = module.resource_group.name
+  sku                 = "PerGB2018"
+  retention_in_days   = var.environment == "prod" ? 90 : 30
+
+  tags = {
+    Environment = var.environment
+    Project     = var.prefix
+  }
 }
 
-resource "azurerm_role_assignment" "product_acr_pull" {
-  count                = local.product_principal_id != null ? 1 : 0
-  scope                = module.acr.id
-  role_definition_name = "AcrPull"
-  principal_id         = local.product_principal_id
-}
+module "container_apps" {
+  source = "./modules/container_app"
 
-resource "azurerm_role_assignment" "user_acr_pull" {
-  count                = local.user_principal_id != null ? 1 : 0
-  scope                = module.acr.id
-  role_definition_name = "AcrPull"
-  principal_id         = local.user_principal_id
+  environment_name           = "${var.prefix}-${var.environment}-env"
+  resource_group_name        = module.resource_group.name
+  location                   = module.resource_group.location
+  log_analytics_workspace_id = azurerm_log_analytics_workspace.this.id
+  acr_login_server           = module.container_registry.login_server
+  acr_pull_identity_id       = azurerm_user_assigned_identity.acr_pull_identity.id
+
+  # Define your microservices
+  microservices = {
+    cartservice = {
+      tag         = "latest"
+      cpu         = "0.5"
+      memory      = "1.0Gi"
+      target_port = 80
+      external    = true # Publicly accessible
+      env_vars = {
+        "ASPNETCORE_ENVIRONMENT" = var.environment
+        "SERVICE_NAME"           = "CartService"
+      }
+    }
+
+    paymentservice = {
+      tag         = "latest"
+      cpu         = "0.5"
+      memory      = "1.0Gi"
+      target_port = 80
+      external    = false # Internal only
+      env_vars = {
+        "ASPNETCORE_ENVIRONMENT" = var.environment
+        "SERVICE_NAME"           = "PaymentService"
+      }
+    }
+
+    productservice = {
+      tag         = "latest"
+      cpu         = "0.5"
+      memory      = "1.0Gi"
+      target_port = 80
+      external    = false # Internal only
+      env_vars = {
+        "ASPNETCORE_ENVIRONMENT" = var.environment
+        "SERVICE_NAME"           = "ProductService"
+      }
+    }
+
+    userservice = {
+      tag         = "latest"
+      cpu         = "0.5"
+      memory      = "1.0Gi"
+      target_port = 80
+      external    = false # Internal only
+      env_vars = {
+        "ASPNETCORE_ENVIRONMENT" = var.environment
+        "SERVICE_NAME"           = "UserService"
+      }
+    }
+  }
+
+  depends_on = [
+    azurerm_role_assignment.acr_pull_role
+  ]
+
+  tags = {
+    Environment = var.environment
+    Project     = var.prefix
+  }
 }
