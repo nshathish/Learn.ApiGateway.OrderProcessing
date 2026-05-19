@@ -120,6 +120,7 @@ module "container_apps" {
         "SERVICE_NAME"           = "UserService"
       }
     }
+
   }
 
   depends_on = [
@@ -129,5 +130,97 @@ module "container_apps" {
   tags = {
     Environment = var.environment
     Project     = var.prefix
+  }
+}
+
+# API Gateway is created separately so it can reference backend service FQDNs
+# as YARP cluster destination addresses via ASP.NET Core env var overrides.
+resource "azurerm_container_app" "apigateway" {
+  name                         = "apigateway-app"
+  container_app_environment_id = module.container_apps.environment_id
+  resource_group_name          = module.resource_group.name
+  revision_mode                = "Single"
+
+  identity {
+    type         = "UserAssigned"
+    identity_ids = [azurerm_user_assigned_identity.acr_pull_identity.id]
+  }
+
+  registry {
+    server   = module.container_registry.login_server
+    identity = azurerm_user_assigned_identity.acr_pull_identity.id
+  }
+
+  ingress {
+    external_enabled = true
+    target_port      = 80
+    transport        = "auto"
+
+    traffic_weight {
+      percentage      = 100
+      latest_revision = true
+    }
+  }
+
+  template {
+    container {
+      name   = "apigateway"
+      image  = "${module.container_registry.login_server}/apigateway:latest"
+      cpu    = "0.5"
+      memory = "1.0Gi"
+
+      env {
+        name  = "ASPNETCORE_ENVIRONMENT"
+        value = var.environment
+      }
+      env {
+        name  = "SERVICE_NAME"
+        value = "ApiGateway"
+      }
+      # YARP cluster destination overrides — ASP.NET Core maps __ to : in JSON paths
+      env {
+        name  = "ReverseProxy__Clusters__product-cluster__Destinations__product1__Address"
+        value = "${module.container_apps.app_urls["productservice"]}/"
+      }
+      env {
+        name  = "ReverseProxy__Clusters__cart-cluster__Destinations__cart1__Address"
+        value = "${module.container_apps.app_urls["cartservice"]}/"
+      }
+      env {
+        name  = "ReverseProxy__Clusters__user-cluster__Destinations__user1__Address"
+        value = "${module.container_apps.app_urls["userservice"]}/"
+      }
+      env {
+        name  = "ReverseProxy__Clusters__payment-cluster__Destinations__payment1__Address"
+        value = "${module.container_apps.app_urls["paymentservice"]}/"
+      }
+
+      liveness_probe {
+        transport               = "HTTP"
+        path                    = "/health"
+        port                    = 80
+        interval_seconds        = 30
+        failure_count_threshold = 3
+      }
+
+      readiness_probe {
+        transport               = "HTTP"
+        path                    = "/health"
+        port                    = 80
+        interval_seconds        = 5
+        failure_count_threshold = 3
+      }
+    }
+  }
+
+  depends_on = [
+    module.container_apps,
+    azurerm_role_assignment.acr_pull_role
+  ]
+
+  tags = {
+    Environment = var.environment
+    Project     = var.prefix
+    ManagedBy   = "Terraform"
   }
 }

@@ -3,4 +3,5 @@ microservice_tags = {
   paymentservice = "latest"
   productservice = "latest"
   userservice    = "latest"
+  apigateway     = "latest"
 }
