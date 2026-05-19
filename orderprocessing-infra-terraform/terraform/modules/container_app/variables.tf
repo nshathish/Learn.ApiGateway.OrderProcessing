@@ -43,6 +43,7 @@ variable "microservices" {
     target_port = number
     external    = bool
     env_vars    = map(string)
+    image       = optional(string) # explicit image; if null, defaults to ACR image
   }))
   default = {}
 }

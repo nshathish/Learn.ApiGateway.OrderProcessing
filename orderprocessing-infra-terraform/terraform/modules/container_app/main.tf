@@ -42,7 +42,7 @@ resource "azurerm_container_app" "microservice" {
   template {
     container {
       name   = each.key
-      image  = "${var.acr_login_server}/${each.key}:${each.value.tag}"
+      image  = coalesce(each.value.image, "${var.acr_login_server}/${each.key}:${each.value.tag}")
       cpu    = each.value.cpu
       memory = each.value.memory
 
