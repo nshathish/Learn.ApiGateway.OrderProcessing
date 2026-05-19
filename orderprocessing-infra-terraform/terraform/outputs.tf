@@ -1,23 +1,57 @@
+# Resource Group
+output "resource_group_name" {
+  value = module.resource_group.name
+}
+
+# ACR
+output "acr_name" {
+  value = module.container_registry.name
+}
+
 output "acr_login_server" {
-  value = module.acr.login_server
+  value = module.container_registry.login_server
 }
 
-output "container_app_env_id" {
-  value = module.container_app_env.environment_id
+# Managed Identity
+output "acr_pull_identity_id" {
+  value = azurerm_user_assigned_identity.acr_pull_identity.id
 }
 
-output "cart_app_fqdn" {
-  value = data.azurerm_container_app.cart.ingress[0].fqdn
+# Container Apps
+output "container_apps_urls" {
+  description = "URLs for accessing deployed container apps"
+  value       = module.container_apps.app_urls
 }
 
-output "payment_app_fqdn" {
-  value = data.azurerm_container_app.payment.ingress[0].fqdn
+output "container_apps_names" {
+  description = "Names of deployed container apps"
+  value       = module.container_apps.app_names
 }
 
-output "product_app_fqdn" {
-  value = data.azurerm_container_app.product.ingress[0].fqdn
+# Individual service URLs (for convenience)
+output "cartservice_url" {
+  value = module.container_apps.app_urls["cartservice"]
 }
 
-output "user_app_fqdn" {
-  value = data.azurerm_container_app.user.ingress[0].fqdn
+output "paymentservice_url" {
+  value = module.container_apps.app_urls["paymentservice"]
+}
+
+output "productservice_url" {
+  value = module.container_apps.app_urls["productservice"]
+}
+
+output "userservice_url" {
+  value = module.container_apps.app_urls["userservice"]
+}
+
+# Log Analytics
+output "log_analytics_workspace_id" {
+  value = azurerm_log_analytics_workspace.this.id
+}
+
+# Useful commands
+output "view_logs_command" {
+  description = "Command to view Container App logs"
+  value       = "az containerapp logs show --name <app-name> --resource-group ${module.resource_group.name}"
 }

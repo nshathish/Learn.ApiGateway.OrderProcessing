@@ -67,7 +67,10 @@ jobs:
         continue-on-error: true
 
       - name: Terraform Plan
-        run: terraform plan -out=tfplan
+        id: plan
+        run: |
+          terraform plan -out=tfplan
+          terraform show -no-color tfplan > plan.txt
 
       - name: Show Terraform Plan
         run: terraform show -no-color tfplan

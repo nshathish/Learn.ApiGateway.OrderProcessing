@@ -1,7 +1,20 @@
-output "fqdn" {
-  value = azurerm_container_app.this.ingress[0].fqdn
+output "environment_id" {
+  description = "Container Apps Environment ID"
+  value       = azurerm_container_app_environment.this.id
 }
 
-output "principal_id" {
-  value = azurerm_container_app.this.identity[0].principal_id
+output "app_urls" {
+  description = "URLs of deployed container apps"
+  value = {
+    for k, app in azurerm_container_app.microservice :
+    k => "https://${app.ingress[0].fqdn}"
+  }
+}
+
+output "app_names" {
+  description = "Names of deployed container apps"
+  value = {
+    for k, app in azurerm_container_app.microservice :
+    k => app.name
+  }
 }
