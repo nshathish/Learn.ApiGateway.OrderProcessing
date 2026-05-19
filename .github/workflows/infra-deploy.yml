@@ -76,8 +76,13 @@ jobs:
         run: terraform show -no-color tfplan
 
       - name: Terraform Apply (push to main or manual trigger)
+        id: apply
         if: (github.ref == 'refs/heads/main' && github.event_name == 'push') || github.event_name == 'workflow_dispatch'
         run: terraform apply -auto-approve tfplan
+
+      - name: Terraform Destroy on Apply Failure
+        if: failure() && steps.apply.outcome == 'failure'
+        run: terraform destroy -auto-approve
 
       - name: Comment PR with Plan
         if: github.event_name == 'pull_request'
