@@ -75,6 +75,7 @@ module "container_apps" {
   microservices = {
     cartservice = {
       tag         = "latest"
+      image       = "mcr.microsoft.com/azuredocs/containerapps-helloworld:latest"
       cpu         = "0.5"
       memory      = "1.0Gi"
       target_port = 80
@@ -87,6 +88,7 @@ module "container_apps" {
 
     paymentservice = {
       tag         = "latest"
+      image       = "mcr.microsoft.com/azuredocs/containerapps-helloworld:latest"
       cpu         = "0.5"
       memory      = "1.0Gi"
       target_port = 80
@@ -99,6 +101,7 @@ module "container_apps" {
 
     productservice = {
       tag         = "latest"
+      image       = "mcr.microsoft.com/azuredocs/containerapps-helloworld:latest"
       cpu         = "0.5"
       memory      = "1.0Gi"
       target_port = 80
@@ -111,6 +114,7 @@ module "container_apps" {
 
     userservice = {
       tag         = "latest"
+      image       = "mcr.microsoft.com/azuredocs/containerapps-helloworld:latest"
       cpu         = "0.5"
       memory      = "1.0Gi"
       target_port = 80
@@ -165,7 +169,7 @@ resource "azurerm_container_app" "apigateway" {
   template {
     container {
       name   = "apigateway"
-      image  = "${module.container_registry.login_server}/apigateway:latest"
+      image  = "mcr.microsoft.com/azuredocs/containerapps-helloworld:latest"
       cpu    = "0.5"
       memory = "1.0Gi"
 
