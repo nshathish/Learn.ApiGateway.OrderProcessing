@@ -7,6 +7,13 @@ on:
         paths:
             - "OrderProcessingUI/**"
             - ".github/workflows/ui-deploy.yml"
+    workflow_run:
+        workflows:
+            - Deploy Microservices to ACA
+        types:
+            - completed
+        branches:
+            - main
     workflow_dispatch:
 
 permissions:
@@ -16,6 +23,7 @@ permissions:
 jobs:
     build-and-deploy:
         name: Build and Deploy Angular UI
+        if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
         runs-on: ubuntu-latest
 
         steps:
