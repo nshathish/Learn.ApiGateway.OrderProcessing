@@ -22,6 +22,7 @@ permissions:
   id-token: write
   contents: read
   pull-requests: write
+  secrets: write
 
 env:
   TF_VERSION: "1.11.4"
@@ -83,6 +84,14 @@ jobs:
       - name: Terraform Destroy on Apply Failure
         if: failure() && steps.apply.outcome == 'failure'
         run: terraform destroy -auto-approve
+
+      - name: Store SWA deploy token as GitHub secret
+        if: steps.apply.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          SWA_TOKEN=$(terraform output -raw ui_deploy_token)
+          gh secret set AZURE_STATIC_WEB_APPS_API_TOKEN --body "$SWA_TOKEN" --repo ${{ github.repository }}
 
       - name: Comment PR with Plan
         if: github.event_name == 'pull_request'
