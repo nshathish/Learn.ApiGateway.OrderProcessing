@@ -78,10 +78,11 @@ module "container_apps" {
       image       = "mcr.microsoft.com/azuredocs/containerapps-helloworld:latest"
       cpu         = "0.5"
       memory      = "1.0Gi"
-      target_port = 80
+      target_port = 8080
       external    = true # Publicly accessible
       env_vars = {
         "ASPNETCORE_ENVIRONMENT" = var.environment
+        "ASPNETCORE_URLS"        = "http://+:8080"
         "SERVICE_NAME"           = "CartService"
       }
     }
@@ -91,10 +92,11 @@ module "container_apps" {
       image       = "mcr.microsoft.com/azuredocs/containerapps-helloworld:latest"
       cpu         = "0.5"
       memory      = "1.0Gi"
-      target_port = 80
+      target_port = 8080
       external    = false # Internal only
       env_vars = {
         "ASPNETCORE_ENVIRONMENT" = var.environment
+        "ASPNETCORE_URLS"        = "http://+:8080"
         "SERVICE_NAME"           = "PaymentService"
       }
     }
@@ -104,10 +106,11 @@ module "container_apps" {
       image       = "mcr.microsoft.com/azuredocs/containerapps-helloworld:latest"
       cpu         = "0.5"
       memory      = "1.0Gi"
-      target_port = 80
+      target_port = 8080
       external    = false # Internal only
       env_vars = {
         "ASPNETCORE_ENVIRONMENT" = var.environment
+        "ASPNETCORE_URLS"        = "http://+:8080"
         "SERVICE_NAME"           = "ProductService"
       }
     }
@@ -117,10 +120,11 @@ module "container_apps" {
       image       = "mcr.microsoft.com/azuredocs/containerapps-helloworld:latest"
       cpu         = "0.5"
       memory      = "1.0Gi"
-      target_port = 80
+      target_port = 8080
       external    = false # Internal only
       env_vars = {
         "ASPNETCORE_ENVIRONMENT" = var.environment
+        "ASPNETCORE_URLS"        = "http://+:8080"
         "SERVICE_NAME"           = "UserService"
       }
     }
@@ -157,7 +161,7 @@ resource "azurerm_container_app" "apigateway" {
 
   ingress {
     external_enabled = true
-    target_port      = 80
+    target_port      = 8080
     transport        = "auto"
 
     traffic_weight {
@@ -176,6 +180,10 @@ resource "azurerm_container_app" "apigateway" {
       env {
         name  = "ASPNETCORE_ENVIRONMENT"
         value = var.environment
+      }
+      env {
+        name  = "ASPNETCORE_URLS"
+        value = "http://+:8080"
       }
       env {
         name  = "SERVICE_NAME"
@@ -202,7 +210,7 @@ resource "azurerm_container_app" "apigateway" {
       liveness_probe {
         transport               = "HTTP"
         path                    = "/health"
-        port                    = 80
+        port                    = 8080
         interval_seconds        = 30
         failure_count_threshold = 3
       }
@@ -210,7 +218,7 @@ resource "azurerm_container_app" "apigateway" {
       readiness_probe {
         transport               = "HTTP"
         path                    = "/health"
-        port                    = 80
+        port                    = 8080
         interval_seconds        = 5
         failure_count_threshold = 3
       }
