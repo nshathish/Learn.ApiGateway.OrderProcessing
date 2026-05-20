@@ -1,0 +1,49 @@
+name: Deploy UI to Azure Static Web Apps
+
+on:
+    push:
+        branches:
+            - main
+        paths:
+            - "OrderProcessingUI/**"
+            - ".github/workflows/ui-deploy.yml"
+    workflow_dispatch:
+
+permissions:
+    id-token: write
+    contents: read
+
+jobs:
+    build-and-deploy:
+        name: Build and Deploy Angular UI
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: '22'
+
+            - name: Install pnpm
+              run: npm install -g pnpm
+
+            - name: Install dependencies
+              working-directory: OrderProcessingUI
+              run: pnpm install --frozen-lockfile
+
+            - name: Build
+              working-directory: OrderProcessingUI
+              run: pnpm run build
+
+            - name: Deploy to Azure Static Web Apps
+              uses: Azure/static-web-apps-deploy@v1
+              with:
+                  azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+                  repo_token: ${{ secrets.GITHUB_TOKEN }}
+                  action: upload
+                  app_location: OrderProcessingUI
+                  output_location: dist/OrderProcessingUI/browser
+                  skip_app_build: true
