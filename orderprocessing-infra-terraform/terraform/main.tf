@@ -333,7 +333,7 @@ resource "azurerm_container_app" "apigateway" {
 resource "azurerm_static_web_app" "ui" {
   name                = "${var.prefix}-${var.environment}-ui"
   resource_group_name = module.resource_group.name
-  location            = var.location
+  location            = "westeurope" # SWA not available in uksouth; available: centralus, eastus2, westus2, westeurope, eastasia
   sku_tier            = "Free"
   sku_size            = "Free"
 
