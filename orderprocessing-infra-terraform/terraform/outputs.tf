@@ -22,7 +22,10 @@ output "container_apps_urls" {
   description = "URLs for accessing deployed container apps"
   value = merge(
     module.container_apps.app_urls,
-    { apigateway = "https://${azurerm_container_app.apigateway.ingress[0].fqdn}" }
+    {
+      cartservice = "https://${azurerm_container_app.cartservice.ingress[0].fqdn}"
+      apigateway  = "https://${azurerm_container_app.apigateway.ingress[0].fqdn}"
+    }
   )
 }
 
@@ -30,13 +33,16 @@ output "container_apps_names" {
   description = "Names of deployed container apps"
   value = merge(
     module.container_apps.app_names,
-    { apigateway = azurerm_container_app.apigateway.name }
+    {
+      cartservice = azurerm_container_app.cartservice.name
+      apigateway  = azurerm_container_app.apigateway.name
+    }
   )
 }
 
 # Individual service URLs (for convenience)
 output "cartservice_url" {
-  value = module.container_apps.app_urls["cartservice"]
+  value = "https://${azurerm_container_app.cartservice.ingress[0].fqdn}"
 }
 
 output "paymentservice_url" {
