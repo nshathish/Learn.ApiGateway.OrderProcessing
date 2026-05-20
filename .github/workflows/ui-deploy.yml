@@ -30,17 +30,21 @@ jobs:
             - name: Checkout
               uses: actions/checkout@v4
 
+            - name: Setup pnpm
+              uses: pnpm/action-setup@v4
+              with:
+                  version: 11.1.3
+
             - name: Setup Node.js
               uses: actions/setup-node@v4
               with:
-                  node-version: '22'
-
-            - name: Install pnpm
-              run: npm install -g pnpm@11.1.3
+                  node-version: "22"
+                  cache: "pnpm"
+                  cache-dependency-path: OrderProcessingUI/pnpm-lock.yaml
 
             - name: Install dependencies
               working-directory: OrderProcessingUI
-              run: pnpm install --frozen-lockfile
+              run: pnpm install
 
             - name: Build
               working-directory: OrderProcessingUI
