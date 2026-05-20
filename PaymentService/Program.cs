@@ -28,8 +28,6 @@ if (app.Environment.IsDevelopment())
     app.MapScalarApiReference(options => { options.DarkMode = false; });
 }
 
-app.UseHttpsRedirection();
-
 app.MapPaymentEndpoints();
 app.MapHealthChecks("/health");
 
