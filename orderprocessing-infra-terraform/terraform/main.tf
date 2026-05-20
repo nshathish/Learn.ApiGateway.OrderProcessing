@@ -81,9 +81,10 @@ module "container_apps" {
       target_port = 8080
       external    = true # Publicly accessible
       env_vars = {
-        "ASPNETCORE_ENVIRONMENT" = var.environment
-        "ASPNETCORE_URLS"        = "http://+:8080"
-        "SERVICE_NAME"           = "CartService"
+        "ASPNETCORE_ENVIRONMENT"             = var.environment
+        "ASPNETCORE_URLS"                    = "http://+:8080"
+        "SERVICE_NAME"                       = "CartService"
+        "ConnectionStrings__DefaultConnection" = "Data Source=/tmp/cart.db"
       }
     }
 
@@ -95,9 +96,10 @@ module "container_apps" {
       target_port = 8080
       external    = false # Internal only
       env_vars = {
-        "ASPNETCORE_ENVIRONMENT" = var.environment
-        "ASPNETCORE_URLS"        = "http://+:8080"
-        "SERVICE_NAME"           = "PaymentService"
+        "ASPNETCORE_ENVIRONMENT"               = var.environment
+        "ASPNETCORE_URLS"                      = "http://+:8080"
+        "SERVICE_NAME"                         = "PaymentService"
+        "ConnectionStrings__DefaultConnection" = "Data Source=/tmp/payment.db"
       }
     }
 
@@ -109,9 +111,10 @@ module "container_apps" {
       target_port = 8080
       external    = false # Internal only
       env_vars = {
-        "ASPNETCORE_ENVIRONMENT" = var.environment
-        "ASPNETCORE_URLS"        = "http://+:8080"
-        "SERVICE_NAME"           = "ProductService"
+        "ASPNETCORE_ENVIRONMENT"               = var.environment
+        "ASPNETCORE_URLS"                      = "http://+:8080"
+        "SERVICE_NAME"                         = "ProductService"
+        "ConnectionStrings__DefaultConnection" = "Data Source=/tmp/product.db"
       }
     }
 
@@ -123,9 +126,10 @@ module "container_apps" {
       target_port = 8080
       external    = false # Internal only
       env_vars = {
-        "ASPNETCORE_ENVIRONMENT" = var.environment
-        "ASPNETCORE_URLS"        = "http://+:8080"
-        "SERVICE_NAME"           = "UserService"
+        "ASPNETCORE_ENVIRONMENT"               = var.environment
+        "ASPNETCORE_URLS"                      = "http://+:8080"
+        "SERVICE_NAME"                         = "UserService"
+        "ConnectionStrings__DefaultConnection" = "Data Source=/tmp/user.db"
       }
     }
 
