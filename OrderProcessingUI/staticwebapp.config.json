@@ -1,0 +1,12 @@
+{
+  "navigationFallback": {
+    "rewrite": "/index.html",
+    "exclude": ["/assets/*", "/*.{css,js,ico,png,svg,json}"]
+  },
+  "routes": [
+    {
+      "route": "/api/*",
+      "rewrite": "https://apigateway-app.happybeach-64cb3345.uksouth.azurecontainerapps.io/api/*"
+    }
+  ]
+}
