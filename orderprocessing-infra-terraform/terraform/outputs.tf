@@ -71,3 +71,15 @@ output "view_logs_command" {
   description = "Command to view Container App logs"
   value       = "az containerapp logs show --name <app-name> --resource-group ${module.resource_group.name}"
 }
+
+# Static Web App
+output "ui_url" {
+  description = "Public URL of the Angular UI"
+  value       = "https://${azurerm_static_web_app.ui.default_host_name}"
+}
+
+output "ui_deploy_token" {
+  description = "Deployment token for the Static Web App — store as AZURE_STATIC_WEB_APPS_API_TOKEN in GitHub secrets"
+  value       = azurerm_static_web_app.ui.api_key
+  sensitive   = true
+}

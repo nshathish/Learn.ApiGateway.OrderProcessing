@@ -329,3 +329,18 @@ resource "azurerm_container_app" "apigateway" {
     ManagedBy   = "Terraform"
   }
 }
+
+resource "azurerm_static_web_app" "ui" {
+  name                = "${var.prefix}-${var.environment}-ui"
+  resource_group_name = module.resource_group.name
+  location            = var.location
+  sku_tier            = "Free"
+  sku_size            = "Free"
+
+  tags = {
+    Environment = var.environment
+    Project     = var.prefix
+    ManagedBy   = "Terraform"
+  }
+}
+}
