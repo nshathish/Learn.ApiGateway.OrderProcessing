@@ -66,7 +66,10 @@ public static class ServiceCollectionExtensions
         {
             options.AddPolicy("AllowWebUI", policy =>
             {
-                policy.WithOrigins("http://localhost:4200")
+                policy.WithOrigins(
+                        "http://localhost:4200",
+                        "https://icy-water-07cfdfb03.7.azurestaticapps.net"
+                    )
                     .WithMethods("GET", "POST", "PUT", "DELETE")
                     .AllowAnyHeader()
                     .WithExposedHeaders("X-RequestId", "X-RateLimit-Remaining");
