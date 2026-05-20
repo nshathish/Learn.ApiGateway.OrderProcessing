@@ -334,12 +334,18 @@ resource "azurerm_static_web_app" "ui" {
   name                = "${var.prefix}-${var.environment}-ui"
   resource_group_name = module.resource_group.name
   location            = "westeurope" # SWA not available in uksouth; available: centralus, eastus2, westus2, westeurope, eastasia
-  sku_tier            = "Free"
-  sku_size            = "Free"
+  sku_tier            = "Standard"
+  sku_size            = "Standard"
 
   tags = {
     Environment = var.environment
     Project     = var.prefix
     ManagedBy   = "Terraform"
   }
+}
+
+resource "azurerm_static_web_app_linked_backend" "api_gateway" {
+  static_web_app_id   = azurerm_static_web_app.ui.id
+  backend_resource_id = azurerm_container_app.apigateway.id
+  region              = var.location
 }
