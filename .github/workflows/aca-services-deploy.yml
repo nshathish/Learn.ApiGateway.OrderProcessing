@@ -33,9 +33,19 @@ env:
     RESOURCE_GROUP_NAME: azlabs13600-dev-rg
 
 jobs:
+    approve:
+        name: Await Manual Approval
+        if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+        runs-on: ubuntu-latest
+        environment:
+            name: aca-approval
+        steps:
+            - name: Approved
+              run: echo "Deployment approved — proceeding with ACA services deployment"
+
     deploy:
         name: Build, Push and Deploy Services
-        if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+        needs: approve
         runs-on: ubuntu-latest
 
         environment:
