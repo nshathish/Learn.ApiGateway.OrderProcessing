@@ -1,5 +1,5 @@
 export const environment = {
   production: true,
-  apiUrl: 'http://localhost:5182',
+  apiUrl: 'https://apigateway-app.happybeach-64cb3345.uksouth.azurecontainerapps.io',
   apiKey: 'dev-key-123',
 };
