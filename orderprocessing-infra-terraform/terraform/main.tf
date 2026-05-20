@@ -189,6 +189,23 @@ resource "azurerm_container_app" "apigateway" {
         name  = "SERVICE_NAME"
         value = "ApiGateway"
       }
+      # HttpClient base addresses for the checkout aggregation endpoint
+      env {
+        name  = "ServiceUrls__ProductService"
+        value = module.container_apps.app_urls["productservice"]
+      }
+      env {
+        name  = "ServiceUrls__CartService"
+        value = module.container_apps.app_urls["cartservice"]
+      }
+      env {
+        name  = "ServiceUrls__UserService"
+        value = module.container_apps.app_urls["userservice"]
+      }
+      env {
+        name  = "ServiceUrls__PaymentService"
+        value = module.container_apps.app_urls["paymentservice"]
+      }
       # YARP cluster destination overrides — ASP.NET Core maps __ to : in JSON paths
       env {
         name  = "ReverseProxy__Clusters__product-cluster__Destinations__product1__Address"
