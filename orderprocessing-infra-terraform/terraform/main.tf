@@ -334,12 +334,25 @@ resource "azurerm_static_web_app" "ui" {
   name                = "${var.prefix}-${var.environment}-ui"
   resource_group_name = module.resource_group.name
   location            = "westeurope" # SWA not available in uksouth; available: centralus, eastus2, westus2, westeurope, eastasia
-  sku_tier            = "Free"
-  sku_size            = "Free"
+  sku_tier            = "Standard"
+  sku_size            = "Standard"
 
   tags = {
     Environment = var.environment
     Project     = var.prefix
     ManagedBy   = "Terraform"
+  }
+}
+
+resource "azapi_resource" "swa_linked_backend" {
+  type      = "Microsoft.Web/staticSites/linkedBackends@2022-09-01"
+  name      = "api-gateway"
+  parent_id = azurerm_static_web_app.ui.id
+
+  body = {
+    properties = {
+      backendResourceId = azurerm_container_app.apigateway.id
+      region            = var.location
+    }
   }
 }
