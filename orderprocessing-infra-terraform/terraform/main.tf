@@ -344,8 +344,15 @@ resource "azurerm_static_web_app" "ui" {
   }
 }
 
-resource "azurerm_static_web_app_linked_backend" "api_gateway" {
-  static_web_app_id   = azurerm_static_web_app.ui.id
-  backend_resource_id = azurerm_container_app.apigateway.id
-  region              = var.location
+resource "azapi_resource" "swa_linked_backend" {
+  type      = "Microsoft.Web/staticSites/linkedBackends@2022-09-01"
+  name      = "api-gateway"
+  parent_id = azurerm_static_web_app.ui.id
+
+  body = {
+    properties = {
+      backendResourceId = azurerm_container_app.apigateway.id
+      region            = var.location
+    }
+  }
 }
