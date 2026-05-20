@@ -343,4 +343,3 @@ resource "azurerm_static_web_app" "ui" {
     ManagedBy   = "Terraform"
   }
 }
-}
