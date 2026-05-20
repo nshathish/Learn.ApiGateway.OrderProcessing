@@ -7,6 +7,7 @@ on:
         paths:
             - "OrderProcessingUI/**"
             - ".github/workflows/ui-deploy.yml"
+            - "pnpm-workspace.yaml"
     workflow_run:
         workflows:
             - Deploy Microservices to ACA
@@ -44,7 +45,7 @@ jobs:
 
             - name: Install dependencies
               working-directory: OrderProcessingUI
-              run: pnpm install
+              run: pnpm install --frozen-lockfile
 
             - name: Build
               working-directory: OrderProcessingUI
