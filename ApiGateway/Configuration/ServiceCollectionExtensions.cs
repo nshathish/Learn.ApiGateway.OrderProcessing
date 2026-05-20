@@ -73,6 +73,8 @@ public static class ServiceCollectionExtensions
             });
         });
 
+        services.AddHealthChecks();
+
         return services;
     }
 }

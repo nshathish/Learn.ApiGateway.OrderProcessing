@@ -6,6 +6,7 @@ using Scalar.AspNetCore;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi();
+builder.Services.AddHealthChecks();
 builder.Services.AddDbContext<ProductDbContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
 
@@ -21,8 +22,6 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
     app.MapScalarApiReference(options => { options.DarkMode = false; });
 }
-
-app.UseHttpsRedirection();
 
 app.MapProductEndpoints();
 app.MapHealthChecks("/health");
